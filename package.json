@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "start_c": "expo start -c",
-    "build_apk": "eas build --platform android",
+    "build_apk": "eas build -p android --profile prod",
     "build_ios": "eas build --platform ios",
     "build": "eas build",
     "build_local": "eas build --platform android --local"

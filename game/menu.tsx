@@ -1,4 +1,3 @@
-import appConfig from "@/app.json";
 import BurgerMenu from "@/app/components/BurgerMenu";
 import DialogBox from "@/app/components/Dialog";
 import {
@@ -29,7 +28,7 @@ const GRID_SIZE = 40;
 const GITHUB_OWNER = "jhonkeithman123"; // GitHub username
 const GITHUB_REPO = "Tetris"; // Repo name
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-const CURRENT_VERSION = appConfig.expo.version; // Link to app.json
+let CURRENT_VERSION = "1.0.0"; // TODO: UPDATE MANUALLY
 
 interface MenuProps {
   onStartGame: () => void;
@@ -199,7 +198,7 @@ export default function Menu({
   const [updateInfo, setUpdateInfo] = useState<GitHubRelease | null>(null);
 
   const [fontsLoaded] = useFonts({
-    Tetris: require("../assets/font/Tetris.ttf"),
+    Tetris: require("@/assets/font/Tetris.ttf"),
   });
 
   useEffect(() => {

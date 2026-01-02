@@ -8,20 +8,20 @@
       "developmentClient": true,
       "distribution": "internal"
     },
-    "preview": {
+    "prod": {
       "android": {
         "buildType": "apk"
       }
     },
-    "preview2": {
+    "prod2": {
       "android": {
         "gradleCommand": ":app:assembleRelease"
       }
     },
-    "preview3": {
+    "prod3": {
       "developmentClient": true
     },
-    "preview4": {
+    "prod4": {
       "distribution": "internal"
     },
     "production": {
