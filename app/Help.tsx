@@ -69,6 +69,24 @@ export default function Help({ onBack }: HelpProps) {
           </Text>
         </View>
 
+        {/* Combo Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Combo System</Text>
+          <Text style={styles.bodyText}>
+            • Clear lines consecutively to build a{" "}
+            <Text style={styles.highlight}>COMBO</Text>
+            {"\n"}• Each line clear in succession increases your multiplier
+            {"\n"}• Combo bonuses:{" "}
+            <Text style={styles.highlight}>+10 × combo count</Text>
+            {"\n"}• Maximum combo: <Text style={styles.highlight}>7x</Text>
+            {"\n"}• Combo resets if you don't clear lines within 6 seconds
+            {"\n"}• {"\n"}
+            <Text style={styles.comboExample}>Combo Examples:</Text>
+            {"\n"}• x1 Combo: +10 bonus points{"\n"}• x2 Combo: +20 bonus points
+            {"\n"}• x3 Combo: +30 bonus points{"\n"}• x7 Combo: +70 bonus points
+          </Text>
+        </View>
+
         {/* Special Pieces */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Special Pieces</Text>
@@ -166,6 +184,10 @@ const styles = StyleSheet.create({
   },
   highlight: {
     color: "#e67e22",
+    fontWeight: "bold",
+  },
+  comboExample: {
+    color: "#f39c12",
     fontWeight: "bold",
   },
   backButtonContainer: {

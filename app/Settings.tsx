@@ -1,5 +1,6 @@
+import storeManager, { GameSettings } from "@/app/utils/storeManager";
 import Slider from "@react-native-community/slider";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Image,
   Pressable,
@@ -34,6 +35,21 @@ export default function Settings({
   onSfxVolumeChange,
 }: SettingsProps) {
   const [backPressed, setBackPressed] = useState(false);
+
+  // Save settings whenever they change
+  useEffect(() => {
+    const saveSettings = async () => {
+      const settings: GameSettings = {
+        musicEnabled,
+        soundEnabled: sfxEnabled,
+        musicVolume,
+        soundVolume: sfxVolume,
+      };
+      await storeManager.saveGameSettings(settings);
+    };
+
+    saveSettings();
+  }, [musicEnabled, sfxEnabled, musicVolume, sfxVolume]);
 
   return (
     <View style={styles.container}>

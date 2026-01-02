@@ -170,6 +170,10 @@ export default function Menu({
   const [settingsPressed, setSettingsPressed] = useState<boolean>(false);
   const [dialogVisible, setDialogVisible] = useState<boolean>(false);
   const [quitDialogVisible, setQuitDialogVisible] = useState<boolean>(false);
+  const [leaderboardDialogVisible, setLeaderboardDialogVisible] =
+    useState<boolean>(false);
+  const [accountDialogVisible, setAccountDialogVisible] =
+    useState<boolean>(false);
 
   const [fontsLoaded] = useFonts({
     Tetris: require("../assets/font/Tetris.ttf"),
@@ -196,14 +200,18 @@ export default function Menu({
   };
 
   const handleHelp = () => {
-    if (onShowLeaderboard) {
-      onHelp?.();
+    if (onHelp) {
+      onHelp();
     }
+  };
+
+  const handleLeaderboard = () => {
+    setLeaderboardDialogVisible(true);
   };
 
   const handleAccount = () => {
     // TODO: Show account screen
-    console.log("Account pressed");
+    setAccountDialogVisible(true);
   };
 
   return (
@@ -237,6 +245,22 @@ export default function Menu({
         onCancel={() => setQuitDialogVisible(false)}
       />
 
+      <DialogBox
+        visible={leaderboardDialogVisible}
+        title="Coming Soon"
+        message="Leaderboard feature is not implemented yet. Stay tuned for future updates!"
+        type="alert"
+        onConfirm={() => setLeaderboardDialogVisible(false)}
+      />
+
+      <DialogBox
+        visible={accountDialogVisible}
+        title="Coming Soom"
+        message="Account feature is not implemented yet. Stay tuned for future updates!"
+        type="alert"
+        onConfirm={() => setAccountDialogVisible(false)}
+      />
+
       <View style={styles.logoContainer}>
         <Pressable onPress={() => setDialogVisible(true)}>
           <Image
@@ -267,7 +291,7 @@ export default function Menu({
           <Pressable
             onPressIn={() => setLeaderboardPressed(true)}
             onPressOut={() => setLeaderboardPressed(false)}
-            onPress={onShowLeaderboard}
+            onPress={handleLeaderboard}
           >
             <Image
               source={

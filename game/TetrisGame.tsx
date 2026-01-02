@@ -1,5 +1,6 @@
 import DialogBox from "@/app/components/Dialog";
 import useSound from "@/app/hooks/useSound";
+import storeManager from "@/app/utils/storeManager";
 import React, { useEffect, useRef, useState } from "react";
 import {
   BackHandler,
@@ -52,6 +53,9 @@ export default function TetrisGame({
   const [level, setLevel] = useState<number>(1);
   const [lines, setLines] = useState<number>(0);
   const [combo, setCombo] = useState<number>(0);
+  const [time, setTime] = useState<number>(0);
+  const [highScore, setHighScore] = useState<number>(0);
+  const [isNewHighScore, setIsNewHighScore] = useState<boolean>(false);
 
   // Game states
   const [gameOver, setGameOver] = useState<boolean>(false);
@@ -63,6 +67,7 @@ export default function TetrisGame({
   const [menuPressed, setMenuPressed] = useState<boolean>(false);
   const [backDialogVisible, setBackDialogVisible] = useState<boolean>(false);
   const [holdPressed, setHoldPressed] = useState<boolean>(false);
+  const [pausePressed, setPausePressed] = useState<boolean>(false);
 
   const [board, setBoard] = useState<BoardCell[][]>(createEmptyBoard());
 
@@ -74,8 +79,67 @@ export default function TetrisGame({
   const [rotation, setRotation] = useState<number>(0);
 
   const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastMoveTimeRef = useRef<number>(Date.now());
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastDropTimeRef = useRef<number>(Date.now());
   const comboTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentPieceRef = useRef<Piece | null>(null);
+  const boardRef = useRef<BoardCell[][]>(createEmptyBoard());
+  const isPausedRef = useRef<boolean>(false);
+  const gameOverRef = useRef<boolean>(false);
+
+  // Format time as MM:SS
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  // Load high score on component mount
+  useEffect(() => {
+    loadHighScore();
+  }, []);
+
+  const loadHighScore = async () => {
+    const savedHighScore = await storeManager.getHighScore();
+    setHighScore(savedHighScore);
+  };
+
+  // Check and update high score
+  const checkAndUpdateHighScore = async () => {
+    if (score > highScore) {
+      await storeManager.updateGameStats(score, lines, level);
+      setIsNewHighScore(true);
+      setHighScore(score);
+    } else {
+      // Still update stats even if not a high score
+      await storeManager.updateGameStats(score, lines, level);
+    }
+  };
+
+  useEffect(() => {
+    if (gameStarted && !gameOver && !isPaused) {
+      timerRef.current = setInterval(() => {
+        setTime((prev) => prev + 1);
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [gameStarted, gameOver, isPaused]);
+
+  // Level up based on lines cleared
+  useEffect(() => {
+    const newLevel = Math.floor(lines / 10) + 1;
+    if (newLevel !== level && newLevel <= 10) {
+      setLevel(newLevel);
+      soundHook.playEffect("spawn"); // Play level up sound
+    }
+  }, [lines]);
 
   // Calculate combo bonus score
   const calculateComboBonus = (comboCount: number): number => {
@@ -94,6 +158,22 @@ export default function TetrisGame({
       }, COMBO_TIMEOUT);
     }
   };
+
+  useEffect(() => {
+    currentPieceRef.current = currentPiece;
+  }, [currentPiece]);
+
+  useEffect(() => {
+    boardRef.current = board;
+  }, [board]);
+
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
+  useEffect(() => {
+    gameOverRef.current = gameOver;
+  }, [gameOver]);
 
   // Clear combo timer on unmount or game over
   useEffect(() => {
@@ -116,18 +196,21 @@ export default function TetrisGame({
     }
   }, [isPaused, gameOver, gameStarted]);
 
-  // Move piece down
+  // Move piece down (for automatic drops only)
   const moveDown = () => {
-    if (!currentPiece || isPaused || gameOver) return;
+    const piece = currentPieceRef.current;
+    const currentBoard = boardRef.current;
 
-    const movedPiece = movePiece(currentPiece, board, "down");
+    if (!piece || isPausedRef.current || gameOverRef.current) return;
+
+    const movedPiece = movePiece(piece, currentBoard, "down");
 
     if (movedPiece) {
       setCurrentPiece(movedPiece);
     } else {
       // Merge and spawn new piece
       soundHook.playEffect("hard_drop");
-      const mergedBoard = mergePiece(currentPiece, board);
+      const mergedBoard = mergePiece(piece, currentBoard);
       const { newBoard, linesCleared } = clearLines(mergedBoard);
 
       setBoard(newBoard);
@@ -172,11 +255,16 @@ export default function TetrisGame({
   // Spawn new piece
   const spawnNewPiece = () => {
     const piece = nextPiece || createPiece();
+    const currentBoard = boardRef.current;
 
-    if (checkCollision(piece, board)) {
+    if (checkCollision(piece, currentBoard)) {
       setGameOver(true);
+      checkAndUpdateHighScore();
       if (gameLoopRef.current) {
         clearInterval(gameLoopRef.current);
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
       }
       if (comboTimerRef.current) {
         clearTimeout(comboTimerRef.current);
@@ -189,7 +277,7 @@ export default function TetrisGame({
     setNextPiece(createPiece());
     setRotation(0);
     setCanHold(true);
-    lastMoveTimeRef.current = Date.now();
+    lastDropTimeRef.current = Date.now();
   };
 
   const startGame = () => {
@@ -198,11 +286,13 @@ export default function TetrisGame({
     setLines(0);
     setLevel(1);
     setCombo(0);
+    setTime(0);
     setGameOver(false);
     setIsPaused(false);
     setGameStarted(true);
     setHeldPiece(null);
     setCanHold(true);
+    setIsNewHighScore(false);
 
     if (comboTimerRef.current) {
       clearTimeout(comboTimerRef.current);
@@ -214,19 +304,19 @@ export default function TetrisGame({
     setCurrentPiece(firstPiece);
     setNextPiece(second);
     setRotation(0);
-    lastMoveTimeRef.current = Date.now();
+    lastDropTimeRef.current = Date.now();
   };
 
   // Game loop
   useEffect(() => {
     if (gameStarted && !gameOver && !isPaused) {
-      const interval = 1000 - (level - 1) * 100;
+      const interval = Math.max(100, 1000 - (level - 1) * 100);
 
       gameLoopRef.current = setInterval(() => {
         const now = Date.now();
-        if (now - lastMoveTimeRef.current >= interval) {
+        if (now - lastDropTimeRef.current >= interval) {
           moveDown();
-          lastMoveTimeRef.current = now;
+          lastDropTimeRef.current = now;
         }
       }, 50);
     }
@@ -236,7 +326,7 @@ export default function TetrisGame({
         clearInterval(gameLoopRef.current);
       }
     };
-  }, [gameStarted, gameOver, isPaused, currentPiece, level, board, combo]);
+  }, [gameStarted, gameOver, isPaused, level]);
 
   // Play game music when game starts
   useEffect(() => {
@@ -288,6 +378,9 @@ export default function TetrisGame({
     if (gameLoopRef.current) {
       clearInterval(gameLoopRef.current);
     }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
     if (comboTimerRef.current) {
       clearTimeout(comboTimerRef.current);
     }
@@ -328,49 +421,64 @@ export default function TetrisGame({
     }
 
     setCanHold(false);
-    lastMoveTimeRef.current = Date.now();
   };
 
   // Control handlers
   const handleRotate = () => {
-    if (!currentPiece || isPaused || gameOver) return;
+    if (isPaused || gameOver) return;
 
-    const result = rotatePiece(currentPiece, rotation, board);
-    if (result) {
-      soundHook.playEffect("rotate");
-      setCurrentPiece(result.piece);
-      setRotation(result.rotation);
-      lastMoveTimeRef.current = Date.now();
-    }
+    setCurrentPiece((prev) => {
+      if (!prev) return prev;
+      const result = rotatePiece(prev, rotation, boardRef.current);
+      if (result) {
+        soundHook.playEffect("rotate");
+        setRotation(result.rotation);
+        return result.piece;
+      }
+      return prev;
+    });
   };
 
   const handleMoveLeft = () => {
-    if (!currentPiece || isPaused || gameOver) return;
+    if (isPaused || gameOver) return;
 
-    const movedPiece = movePiece(currentPiece, board, "left");
-    if (movedPiece) {
-      soundHook.playEffect("move");
-      setCurrentPiece(movedPiece);
-      lastMoveTimeRef.current = Date.now();
-    }
+    setCurrentPiece((prev) => {
+      if (!prev) return prev;
+      const movedPiece = movePiece(prev, boardRef.current, "left");
+      if (movedPiece) {
+        soundHook.playEffect("move");
+        return movedPiece;
+      }
+      return prev;
+    });
   };
 
   const handleMoveDown = () => {
-    if (!currentPiece || isPaused || gameOver) return;
-    soundHook.playEffect("move");
-    moveDown();
-    lastMoveTimeRef.current = Date.now();
+    if (isPaused || gameOver) return;
+
+    setCurrentPiece((prev) => {
+      if (!prev) return prev;
+      const movedPiece = movePiece(prev, boardRef.current, "down");
+      if (movedPiece) {
+        soundHook.playEffect("move");
+        return movedPiece;
+      }
+      return prev;
+    });
   };
 
   const handleMoveRight = () => {
-    if (!currentPiece || isPaused || gameOver) return;
+    if (isPaused || gameOver) return;
 
-    const movedPiece = movePiece(currentPiece, board, "right");
-    if (movedPiece) {
-      soundHook.playEffect("move");
-      setCurrentPiece(movedPiece);
-      lastMoveTimeRef.current = Date.now();
-    }
+    setCurrentPiece((prev) => {
+      if (!prev) return prev;
+      const movedPiece = movePiece(prev, boardRef.current, "right");
+      if (movedPiece) {
+        soundHook.playEffect("move");
+        return movedPiece;
+      }
+      return prev;
+    });
   };
 
   const handleHardDrop = () => {
@@ -485,6 +593,7 @@ export default function TetrisGame({
                 style={[
                   styles.holdButton,
                   !canHold && styles.holdButtonDisabled,
+                  holdPressed && styles.holdButtonPressed,
                 ]}
               >
                 <Text style={styles.holdButtonText}>
@@ -501,6 +610,11 @@ export default function TetrisGame({
             <View style={styles.statBox}>
               <Text style={styles.statLabel}>LINES</Text>
               <Text style={styles.statValue}>{lines}</Text>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>TIME</Text>
+              <Text style={styles.statValue}>{formatTime(time)}</Text>
             </View>
 
             {/* Combo Box */}
@@ -548,7 +662,12 @@ export default function TetrisGame({
 
             {gameOver && (
               <View style={styles.gameOverOverlay}>
+                {isNewHighScore && (
+                  <Text style={styles.newHighScoreText}>NEW HIGH SCORE!</Text>
+                )}
                 <Text style={styles.gameOverText}>GAME OVER</Text>
+                <Text style={styles.finalScore}>Score: {score}</Text>
+                <Text style={styles.finalTime}>Time: {formatTime(time)}</Text>
                 <Pressable
                   onPressIn={() => setRestartPressed(true)}
                   onPressOut={() => setRestartPressed(false)}
@@ -600,7 +719,42 @@ export default function TetrisGame({
               </View>
             </View>
 
-            <Pressable style={styles.pauseButton} onPress={handlePauseToggle}>
+            {/* Level Box */}
+            <View style={styles.levelBox}>
+              <Text style={styles.levelLabel}>LEVEL</Text>
+              <Text style={styles.levelValue}>{level}</Text>
+              <View style={styles.levelProgressContainer}>
+                <View
+                  style={[
+                    styles.levelProgressBar,
+                    {
+                      width: `${((lines % 10) / 10) * 100}%`,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.levelProgressText}>
+                {lines % 10}/10 lines
+              </Text>
+            </View>
+
+            {/* High Score Box */}
+            {highScore > 0 && (
+              <View style={styles.highScoreBox}>
+                <Text style={styles.highScoreLabel}>HIGH SCORE</Text>
+                <Text style={styles.highScoreValue}>{highScore}</Text>
+              </View>
+            )}
+
+            <Pressable
+              style={[
+                styles.pauseButton,
+                pausePressed && styles.pauseButtonPressed,
+              ]}
+              onPressIn={() => setPausePressed(true)}
+              onPressOut={() => setPausePressed(false)}
+              onPress={handlePauseToggle}
+            >
               <Text style={styles.pauseButtonText}>{isPaused ? "▶" : "⏸"}</Text>
             </Pressable>
           </View>
@@ -686,6 +840,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#555",
     opacity: 0.5,
   },
+  holdButtonPressed: {
+    backgroundColor: "#8e44ad",
+    transform: [{ scale: 0.95 }],
+  },
   holdButtonText: {
     fontSize: 10,
     color: "#ffffff",
@@ -746,10 +904,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  newHighScoreText: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#f1c40f",
+    marginBottom: 10,
+    textShadowColor: "#f39c12",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
   gameOverText: {
     fontSize: 32,
     fontWeight: "bold",
     color: "#e74c3c",
+    marginBottom: 10,
+  },
+  finalScore: {
+    fontSize: 20,
+    color: "#ffffff",
+    marginBottom: 5,
+  },
+  finalTime: {
+    fontSize: 18,
+    color: "#95a5a6",
     marginBottom: 15,
   },
   pauseOverlay: {
@@ -797,11 +974,74 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f0f1e",
     borderRadius: 4,
   },
+  levelBox: {
+    backgroundColor: "#1a1a2e",
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#27ae60",
+    minWidth: 70,
+    alignItems: "center",
+  },
+  levelLabel: {
+    fontSize: 10,
+    color: "#7f8c8d",
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  levelValue: {
+    fontSize: 24,
+    color: "#27ae60",
+    fontWeight: "bold",
+    marginBottom: 6,
+  },
+  levelProgressContainer: {
+    width: "100%",
+    height: 6,
+    backgroundColor: "#0f0f1e",
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 4,
+  },
+  levelProgressBar: {
+    height: "100%",
+    backgroundColor: "#27ae60",
+    borderRadius: 3,
+  },
+  levelProgressText: {
+    fontSize: 8,
+    color: "#95a5a6",
+    fontWeight: "600",
+  },
+  highScoreBox: {
+    backgroundColor: "#1a1a2e",
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#f1c40f",
+    minWidth: 70,
+    alignItems: "center",
+  },
+  highScoreLabel: {
+    fontSize: 9,
+    color: "#f1c40f",
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  highScoreValue: {
+    fontSize: 16,
+    color: "#ffffff",
+    fontWeight: "bold",
+  },
   pauseButton: {
     backgroundColor: "#e67e22",
     padding: 12,
     borderRadius: 6,
     alignItems: "center",
+  },
+  pauseButtonPressed: {
+    backgroundColor: "#d35400",
+    transform: [{ scale: 0.95 }],
   },
   pauseButtonText: {
     fontSize: 20,
