@@ -1,9 +1,17 @@
-import { getRandomBlockAsset } from "@/utils/blockAssets";
+import BurgerMenu from "@/app/components/BurgerMenu";
+import DialogBox from "@/app/components/Dialog";
+import {
+  BlockColor,
+  getBlockAsset,
+  getRandomBlockColor,
+} from "@/app/utils/blockAssets";
 import { useFonts } from "expo-font";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  BackHandler,
   Dimensions,
+  Easing,
   Image,
   Pressable,
   StyleSheet,
@@ -17,10 +25,12 @@ interface MenuProps {
   onStartGame: () => void;
   onShowSettings?: () => void;
   onShowLeaderboard?: () => void;
+  onHelp?: () => void;
 }
+
 interface FallingBlock {
   id: number;
-  source: any;
+  color: BlockColor;
   x: number;
   animatedY: Animated.Value;
   rotation: Animated.Value;
@@ -33,11 +43,11 @@ const AnimatedBackground = () => {
   useEffect(() => {
     const spawnBlock = () => {
       const initialRotation = Math.random() * 360;
-      const { asset } = getRandomBlockAsset();
+      const color = getRandomBlockColor();
 
       const newBlock: FallingBlock = {
         id: blockIdRef.current++,
-        source: asset,
+        color,
         x: Math.random() * (width - 60),
         animatedY: new Animated.Value(-100),
         rotation: new Animated.Value(Math.random() * 360),
@@ -67,32 +77,36 @@ const AnimatedBackground = () => {
 
   return (
     <View style={styles.animatedBackground}>
-      {blocks.map((block) => (
-        <Animated.View
-          key={block.id}
-          style={[
-            styles.fallingBlock,
-            {
-              left: block.x,
-              transform: [
-                { translateY: block.animatedY },
-                {
-                  rotate: block.rotation.interpolate({
-                    inputRange: [0, 360],
-                    outputRange: ["0deg", "360deg"],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <Image
-            source={block.source}
-            style={styles.blockImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
-      ))}
+      {blocks.map((block) => {
+        const blockAsset = getBlockAsset(block.color);
+
+        return (
+          <Animated.View
+            key={block.id}
+            style={[
+              styles.fallingBlock,
+              {
+                left: block.x,
+                transform: [
+                  { translateY: block.animatedY },
+                  {
+                    rotate: block.rotation.interpolate({
+                      inputRange: [0, 360],
+                      outputRange: ["0deg", "360deg"],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Image
+              source={blockAsset}
+              style={styles.blockImage}
+              resizeMode="contain"
+            />
+          </Animated.View>
+        );
+      })}
     </View>
   );
 };
@@ -101,15 +115,15 @@ const GridBackground = () => {
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const animation = Animated.loop(
+    Animated.loop(
       Animated.timing(translateY, {
         toValue: GRID_SIZE,
         duration: 2000,
         useNativeDriver: true,
-      })
-    );
-    animation.start();
-    return () => animation.stop();
+        easing: Easing.linear,
+      }),
+      { resetBeforeIteration: true }
+    ).start();
   }, []);
 
   const verticalLines = Math.ceil(width / GRID_SIZE) + 1;
@@ -149,28 +163,89 @@ export default function Menu({
   onStartGame,
   onShowSettings,
   onShowLeaderboard,
+  onHelp,
 }: MenuProps) {
   const [playPressed, setPlayPressed] = useState<boolean>(false);
   const [leaderboardPressed, setLeaderboardPressed] = useState<boolean>(false);
   const [settingsPressed, setSettingsPressed] = useState<boolean>(false);
+  const [dialogVisible, setDialogVisible] = useState<boolean>(false);
+  const [quitDialogVisible, setQuitDialogVisible] = useState<boolean>(false);
 
   const [fontsLoaded] = useFonts({
     Tetris: require("../assets/font/Tetris.ttf"),
   });
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        setQuitDialogVisible(true);
+        return true;
+      }
+    );
+
+    return () => backHandler.remove();
+  }, []);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  const handleQuit = () => {
+    BackHandler.exitApp();
+  };
+
+  const handleHelp = () => {
+    if (onShowLeaderboard) {
+      onHelp?.();
+    }
+  };
+
+  const handleAccount = () => {
+    // TODO: Show account screen
+    console.log("Account pressed");
+  };
 
   return (
     <View style={styles.container}>
       <GridBackground />
       <AnimatedBackground />
 
-      <View style={[styles.logoContainer, { top: -height * 0.3 }]}>
-        <Image
-          source={require("../assets/images/Logo.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-      </View>
+      <BurgerMenu
+        onExit={() => setQuitDialogVisible(true)}
+        onHelp={handleHelp}
+        onAccount={handleAccount}
+      />
 
+      {/* Shown when the menu logo is tapped */}
+      <DialogBox
+        visible={dialogVisible}
+        title="Welcome"
+        message="Welcome to Tetris!"
+        type="alert"
+        onConfirm={() => setDialogVisible(false)}
+      />
+
+      <DialogBox
+        visible={quitDialogVisible}
+        title="Quit Game"
+        message="Are you sure you want to exit?"
+        type="confirm"
+        confirmText="Quit"
+        cancelText="Cancel"
+        onConfirm={handleQuit}
+        onCancel={() => setQuitDialogVisible(false)}
+      />
+
+      <View style={styles.logoContainer}>
+        <Pressable onPress={() => setDialogVisible(true)}>
+          <Image
+            source={require("@/assets/images/Logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </Pressable>
+      </View>
       <View style={styles.buttonContainer}>
         <Pressable
           onPressIn={() => setPlayPressed(true)}
@@ -180,8 +255,8 @@ export default function Menu({
           <Image
             source={
               playPressed
-                ? require("../assets/images/buttons/play/Touched.png")
-                : require("../assets/images/buttons/play/Default.png")
+                ? require("@/assets/images/buttons/play/Touched.png")
+                : require("@/assets/images/buttons/play/Default.png")
             }
             style={styles.button}
             resizeMode="contain"
@@ -240,8 +315,6 @@ const styles = StyleSheet.create({
   },
   animatedBackground: {
     position: "absolute",
-    top: 0,
-    left: 0,
     width: "100%",
     height: "100%",
   },
@@ -279,7 +352,9 @@ const styles = StyleSheet.create({
     height: 1,
     width: "100%",
   },
-  logoContainer: {},
+  logoContainer: {
+    top: -height * 0.21,
+  },
   logo: {
     width: 250,
     height: 250,
