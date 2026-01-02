@@ -2,7 +2,7 @@
 
 ## [1.0.0] - 2026-01-02
 
-### Released[https://github.com/jhonkeithman123/Tetris/releases/tag/v1.0.0] 
+### Released[https://github.com/jhonkeithman123/Tetris/releases] 
 
 Production release for Android
 
