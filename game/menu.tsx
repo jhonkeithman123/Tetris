@@ -1,3 +1,4 @@
+import appConfig from "@/app.json";
 import BurgerMenu from "@/app/components/BurgerMenu";
 import DialogBox from "@/app/components/Dialog";
 import {
@@ -8,18 +9,27 @@ import {
 import { useFonts } from "expo-font";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   BackHandler,
   Dimensions,
   Easing,
   Image,
+  Linking,
   Pressable,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 
 const { height, width } = Dimensions.get("window");
 const GRID_SIZE = 40;
+
+// GitHub configuration
+const GITHUB_OWNER = "jhonkeithman123"; // GitHub username
+const GITHUB_REPO = "Tetris"; // Repo name
+const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const CURRENT_VERSION = appConfig.expo.version; // Link to app.json
 
 interface MenuProps {
   onStartGame: () => void;
@@ -34,6 +44,14 @@ interface FallingBlock {
   x: number;
   animatedY: Animated.Value;
   rotation: Animated.Value;
+}
+
+interface GitHubRelease {
+  tag_name: string;
+  name: string;
+  body: string;
+  html_url: string;
+  published_at: string;
 }
 
 const AnimatedBackground = () => {
@@ -174,6 +192,11 @@ export default function Menu({
     useState<boolean>(false);
   const [accountDialogVisible, setAccountDialogVisible] =
     useState<boolean>(false);
+  const [updateDialogVisible, setUpdateDialogVisible] =
+    useState<boolean>(false);
+  const [updateCheckingVisible, setUpdateCheckingVisible] =
+    useState<boolean>(false);
+  const [updateInfo, setUpdateInfo] = useState<GitHubRelease | null>(null);
 
   const [fontsLoaded] = useFonts({
     Tetris: require("../assets/font/Tetris.ttf"),
@@ -191,9 +214,60 @@ export default function Menu({
     return () => backHandler.remove();
   }, []);
 
+  useEffect(() => {
+    // Check for updates on app start
+    checkForUpdates();
+  }, []);
+
   if (!fontsLoaded) {
     return null;
   }
+
+  const compareVersions = (latest: string, current: string): boolean => {
+    // Remove 'v' prefix if present
+    const latestClean = latest.replace(/^v/, "");
+    const currentClean = current.replace(/^v/, "");
+
+    const latestParts = latestClean.split(".").map(Number);
+    const currentParts = currentClean.split(".").map(Number);
+
+    for (
+      let i = 0;
+      i < Math.max(latestParts.length, currentParts.length);
+      i++
+    ) {
+      const latestPart = latestParts[i] || 0;
+      const currentPart = currentParts[i] || 0;
+
+      if (latestPart > currentPart) return true;
+      if (latestPart < currentPart) return false;
+    }
+
+    return false;
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateCheckingVisible(true);
+    try {
+      const response = await fetch(GITHUB_API_URL);
+      const data: GitHubRelease = await response.json();
+
+      if (compareVersions(data.tag_name, CURRENT_VERSION)) {
+        setUpdateInfo(data);
+        setUpdateDialogVisible(true);
+      }
+      setUpdateCheckingVisible(false);
+    } catch (error) {
+      console.error("Error checking for updates:", error);
+      setUpdateCheckingVisible(false);
+    }
+  };
+
+  const handleUpdatePress = () => {
+    if (updateInfo) {
+      Linking.openURL(updateInfo.html_url);
+    }
+  };
 
   const handleQuit = () => {
     BackHandler.exitApp();
@@ -210,7 +284,6 @@ export default function Menu({
   };
 
   const handleAccount = () => {
-    // TODO: Show account screen
     setAccountDialogVisible(true);
   };
 
@@ -225,7 +298,33 @@ export default function Menu({
         onAccount={handleAccount}
       />
 
-      {/* Shown when the menu logo is tapped */}
+      {/* Update Checking Dialog */}
+      {updateCheckingVisible && (
+        <View style={styles.updateCheckingOverlay}>
+          <View style={styles.updateCheckingBox}>
+            <ActivityIndicator size="large" color="#3498db" />
+            <Text style={styles.updateCheckingText}>
+              Checking for updates...
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Update Available Dialog */}
+      <DialogBox
+        visible={updateDialogVisible && !!updateInfo}
+        title="Update Available"
+        message={`Version ${updateInfo?.tag_name || ""} is available!\n\n${
+          updateInfo?.body || ""
+        }`}
+        type="confirm"
+        confirmText="Update Now"
+        cancelText="Later"
+        onConfirm={handleUpdatePress}
+        onCancel={() => setUpdateDialogVisible(false)}
+      />
+
+      {/* Welcome Dialog */}
       <DialogBox
         visible={dialogVisible}
         title="Welcome"
@@ -234,6 +333,7 @@ export default function Menu({
         onConfirm={() => setDialogVisible(false)}
       />
 
+      {/* Quit Dialog */}
       <DialogBox
         visible={quitDialogVisible}
         title="Quit Game"
@@ -245,6 +345,7 @@ export default function Menu({
         onCancel={() => setQuitDialogVisible(false)}
       />
 
+      {/* Leaderboard Coming Soon Dialog */}
       <DialogBox
         visible={leaderboardDialogVisible}
         title="Coming Soon"
@@ -253,9 +354,10 @@ export default function Menu({
         onConfirm={() => setLeaderboardDialogVisible(false)}
       />
 
+      {/* Account Coming Soon Dialog */}
       <DialogBox
         visible={accountDialogVisible}
-        title="Coming Soom"
+        title="Coming Soon"
         message="Account feature is not implemented yet. Stay tuned for future updates!"
         type="alert"
         onConfirm={() => setAccountDialogVisible(false)}
@@ -322,6 +424,20 @@ export default function Menu({
             />
           </Pressable>
         )}
+
+        {/* Check for Updates Button */}
+        <Pressable
+          onPress={checkForUpdates}
+          disabled={updateCheckingVisible}
+          style={[
+            styles.updateButton,
+            updateCheckingVisible && styles.updateButtonDisabled,
+          ]}
+        >
+          <Text style={styles.updateButtonText}>
+            {updateCheckingVisible ? "Checking..." : "Check for Updates"}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -393,5 +509,49 @@ const styles = StyleSheet.create({
     width: 230,
     height: 60,
     marginVertical: 10,
+  },
+  updateCheckingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  updateCheckingBox: {
+    backgroundColor: "#1a1a2e",
+    borderRadius: 12,
+    padding: 30,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#3498db",
+  },
+  updateCheckingText: {
+    color: "#ffffff",
+    marginTop: 15,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  updateButton: {
+    backgroundColor: "#27ae60",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 15,
+    width: "100%",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#229954",
+  },
+  updateButtonDisabled: {
+    opacity: 0.6,
+  },
+  updateButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
