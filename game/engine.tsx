@@ -328,9 +328,10 @@ export const rotatePiece = (
 ): { piece: Piece; rotation: number } | null => {
   const shapes = SHAPES[piece.type];
   const nextRotation = (rotation + 1) % shapes.length;
-  const rotatedPiece = { ...piece, shape: shapes[nextRotation] };
+  const rotatedShape = shapes[nextRotation];
 
   // Try to rotate at current position
+  const rotatedPiece = { ...piece, shape: rotatedShape };
   if (!checkCollision(rotatedPiece, board)) {
     return { piece: rotatedPiece, rotation: nextRotation };
   }
@@ -340,7 +341,7 @@ export const rotatePiece = (
   for (const offset of wallKickOffsets) {
     if (!checkCollision(rotatedPiece, board, offset, 0)) {
       return {
-        piece: { ...rotatedPiece, x: rotatedPiece.x + offset },
+        piece: { ...rotatedPiece, x: piece.x + offset },
         rotation: nextRotation,
       };
     }
@@ -350,7 +351,7 @@ export const rotatePiece = (
   for (let i = 1; i <= 2; i++) {
     if (!checkCollision(rotatedPiece, board, 0, -i)) {
       return {
-        piece: { ...rotatedPiece, y: rotatedPiece.y - i },
+        piece: { ...rotatedPiece, y: piece.y - i },
         rotation: nextRotation,
       };
     }

@@ -1,12 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Easing,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import DialogBox from "./Dialog";
+
+// GitHub configuration
+const GITHUB_OWNER = "jhonkeithman123";
+const GITHUB_REPO = "Tetris";
+const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const CURRENT_VERSION = "1.0.0"; // TODO: UPDATE MANUALLY
+
+interface GitHubRelease {
+  tag_name: string;
+  name: string;
+  body: string;
+  html_url: string;
+  published_at: string;
+}
 
 const BurgerMenu = ({
   onExit,
@@ -18,6 +35,13 @@ const BurgerMenu = ({
   onAccount: () => void;
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [updateDialogVisible, setUpdateDialogVisible] =
+    useState<boolean>(false);
+  const [upToDateDialogVisible, setUpToDateDialogVisible] =
+    useState<boolean>(false);
+  const [updateCheckingVisible, setUpdateCheckingVisible] =
+    useState<boolean>(false);
+  const [updateInfo, setUpdateInfo] = useState<GitHubRelease | null>(null);
   const slideAnim = useRef(new Animated.Value(-250)).current;
 
   useEffect(() => {
@@ -28,6 +52,53 @@ const BurgerMenu = ({
       easing: Easing.bezier(0.25, 0.1, 0.25, 1),
     }).start();
   }, [isOpen]);
+
+  const compareVersions = (latest: string, current: string): boolean => {
+    const latestClean = latest.replace(/^v/, "");
+    const currentClean = current.replace(/^v/, "");
+
+    const latestParts = latestClean.split(".").map(Number);
+    const currentParts = currentClean.split(".").map(Number);
+
+    for (
+      let i = 0;
+      i < Math.max(latestParts.length, currentParts.length);
+      i++
+    ) {
+      const latestPart = latestParts[i] || 0;
+      const currentPart = currentParts[i] || 0;
+
+      if (latestPart > currentPart) return true;
+      if (latestPart < currentPart) return false;
+    }
+
+    return false;
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateCheckingVisible(true);
+    try {
+      const response = await fetch(GITHUB_API_URL);
+      const data: GitHubRelease = await response.json();
+
+      if (compareVersions(data.tag_name, CURRENT_VERSION)) {
+        setUpdateInfo(data);
+        setUpdateDialogVisible(true);
+      } else {
+        setUpToDateDialogVisible(true);
+      }
+      setUpdateCheckingVisible(false);
+    } catch (error) {
+      console.error("Error checking for updates:", error);
+      setUpdateCheckingVisible(false);
+    }
+  };
+
+  const handleUpdatePress = () => {
+    if (updateInfo) {
+      Linking.openURL(updateInfo.html_url);
+    }
+  };
 
   return (
     <>
@@ -42,6 +113,41 @@ const BurgerMenu = ({
       {isOpen && (
         <Pressable style={styles.overlay} onPress={() => setIsOpen(false)} />
       )}
+
+      {/* Update Checking Dialog */}
+      {updateCheckingVisible && (
+        <View style={styles.updateCheckingOverlay}>
+          <View style={styles.updateCheckingBox}>
+            <ActivityIndicator size="large" color="#3498db" />
+            <Text style={styles.updateCheckingText}>
+              Checking for updates...
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Update Available Dialog */}
+      <DialogBox
+        visible={updateDialogVisible && !!updateInfo}
+        title="Update Available"
+        message={`Version ${updateInfo?.tag_name || ""} is available!\n\n${
+          updateInfo?.body || ""
+        }`}
+        type="confirm"
+        confirmText="Update Now"
+        cancelText="Later"
+        onConfirm={handleUpdatePress}
+        onCancel={() => setUpdateDialogVisible(false)}
+      />
+
+      {/* Up to Date Dialog */}
+      <DialogBox
+        visible={upToDateDialogVisible}
+        title="Up to Date"
+        message={`You're running the latest (${CURRENT_VERSION})!\n\nNo updates available at this time.`}
+        type="alert"
+        onConfirm={() => setUpToDateDialogVisible(false)}
+      />
 
       {/* Side Menu */}
       <Animated.View
@@ -72,6 +178,24 @@ const BurgerMenu = ({
           }}
         >
           <Text style={styles.menuItemText}>❓ Help</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.menuItem}
+          onPress={() => {
+            setIsOpen(false);
+            checkForUpdates();
+          }}
+          disabled={updateCheckingVisible}
+        >
+          <Text
+            style={[
+              styles.menuItemText,
+              updateCheckingVisible && styles.disabledText,
+            ]}
+          >
+            🔄 Check for Updates
+          </Text>
         </Pressable>
 
         <View style={styles.menuDivider} />
@@ -161,6 +285,9 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "500",
   },
+  disabledText: {
+    opacity: 0.5,
+  },
   menuDivider: {
     height: 1,
     backgroundColor: "#3498db",
@@ -172,6 +299,31 @@ const styles = StyleSheet.create({
   exitText: {
     color: "#ffffff",
     fontWeight: "bold",
+  },
+  updateCheckingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1002,
+  },
+  updateCheckingBox: {
+    backgroundColor: "#1a1a2e",
+    borderRadius: 12,
+    padding: 30,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#3498db",
+  },
+  updateCheckingText: {
+    color: "#ffffff",
+    marginTop: 15,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 

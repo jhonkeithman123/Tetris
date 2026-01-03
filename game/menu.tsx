@@ -14,7 +14,6 @@ import {
   Dimensions,
   Easing,
   Image,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -23,12 +22,6 @@ import {
 
 const { height, width } = Dimensions.get("window");
 const GRID_SIZE = 40;
-
-// GitHub configuration
-const GITHUB_OWNER = "jhonkeithman123"; // GitHub username
-const GITHUB_REPO = "Tetris"; // Repo name
-const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-let CURRENT_VERSION = "1.0.0"; // TODO: UPDATE MANUALLY
 
 interface MenuProps {
   onStartGame: () => void;
@@ -44,15 +37,6 @@ interface FallingBlock {
   animatedY: Animated.Value;
   rotation: Animated.Value;
 }
-
-interface GitHubRelease {
-  tag_name: string;
-  name: string;
-  body: string;
-  html_url: string;
-  published_at: string;
-}
-
 const AnimatedBackground = () => {
   const [blocks, setBlocks] = useState<FallingBlock[]>([]);
   const blockIdRef = useRef(0);
@@ -195,7 +179,6 @@ export default function Menu({
     useState<boolean>(false);
   const [updateCheckingVisible, setUpdateCheckingVisible] =
     useState<boolean>(false);
-  const [updateInfo, setUpdateInfo] = useState<GitHubRelease | null>(null);
 
   const [fontsLoaded] = useFonts({
     Tetris: require("@/assets/font/Tetris.ttf"),
@@ -213,60 +196,9 @@ export default function Menu({
     return () => backHandler.remove();
   }, []);
 
-  useEffect(() => {
-    // Check for updates on app start
-    checkForUpdates();
-  }, []);
-
   if (!fontsLoaded) {
     return null;
   }
-
-  const compareVersions = (latest: string, current: string): boolean => {
-    // Remove 'v' prefix if present
-    const latestClean = latest.replace(/^v/, "");
-    const currentClean = current.replace(/^v/, "");
-
-    const latestParts = latestClean.split(".").map(Number);
-    const currentParts = currentClean.split(".").map(Number);
-
-    for (
-      let i = 0;
-      i < Math.max(latestParts.length, currentParts.length);
-      i++
-    ) {
-      const latestPart = latestParts[i] || 0;
-      const currentPart = currentParts[i] || 0;
-
-      if (latestPart > currentPart) return true;
-      if (latestPart < currentPart) return false;
-    }
-
-    return false;
-  };
-
-  const checkForUpdates = async () => {
-    setUpdateCheckingVisible(true);
-    try {
-      const response = await fetch(GITHUB_API_URL);
-      const data: GitHubRelease = await response.json();
-
-      if (compareVersions(data.tag_name, CURRENT_VERSION)) {
-        setUpdateInfo(data);
-        setUpdateDialogVisible(true);
-      }
-      setUpdateCheckingVisible(false);
-    } catch (error) {
-      console.error("Error checking for updates:", error);
-      setUpdateCheckingVisible(false);
-    }
-  };
-
-  const handleUpdatePress = () => {
-    if (updateInfo) {
-      Linking.openURL(updateInfo.html_url);
-    }
-  };
 
   const handleQuit = () => {
     BackHandler.exitApp();
@@ -308,20 +240,6 @@ export default function Menu({
           </View>
         </View>
       )}
-
-      {/* Update Available Dialog */}
-      <DialogBox
-        visible={updateDialogVisible && !!updateInfo}
-        title="Update Available"
-        message={`Version ${updateInfo?.tag_name || ""} is available!\n\n${
-          updateInfo?.body || ""
-        }`}
-        type="confirm"
-        confirmText="Update Now"
-        cancelText="Later"
-        onConfirm={handleUpdatePress}
-        onCancel={() => setUpdateDialogVisible(false)}
-      />
 
       {/* Welcome Dialog */}
       <DialogBox
@@ -423,20 +341,6 @@ export default function Menu({
             />
           </Pressable>
         )}
-
-        {/* Check for Updates Button */}
-        <Pressable
-          onPress={checkForUpdates}
-          disabled={updateCheckingVisible}
-          style={[
-            styles.updateButton,
-            updateCheckingVisible && styles.updateButtonDisabled,
-          ]}
-        >
-          <Text style={styles.updateButtonText}>
-            {updateCheckingVisible ? "Checking..." : "Check for Updates"}
-          </Text>
-        </Pressable>
       </View>
     </View>
   );
