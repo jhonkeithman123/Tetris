@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "NODE_ENV": "development"
+        "NODE_ENV": "development",
+        "PATH": "/home/keith/.nvm/versions/node/v24.11.1/bin:/usr/local/bin:/usr/bin:/bin"
       }
     },
     "prod": {
@@ -24,25 +25,29 @@
         "gradleCommand": ":app:assembleRelease"
       },
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "PATH": "/home/keith/.nvm/versions/node/v24.11.1/bin:/usr/local/bin:/usr/bin:/bin"
       }
     },
     "prod3": {
       "developmentClient": true,
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "PATH": "/home/keith/.nvm/versions/node/v24.11.1/bin:/usr/local/bin:/usr/bin:/bin"
       }
     },
     "prod4": {
       "distribution": "internal",
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "PATH": "/home/keith/.nvm/versions/node/v24.11.1/bin:/usr/local/bin:/usr/bin:/bin"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "PATH": "/home/keith/.nvm/versions/node/v24.11.1/bin:/usr/local/bin:/usr/bin:/bin"
       }
     }
   },
