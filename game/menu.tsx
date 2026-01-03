@@ -8,7 +8,6 @@ import {
 import { useFonts } from "expo-font";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   BackHandler,
   Dimensions,
@@ -16,7 +15,6 @@ import {
   Image,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 
@@ -175,10 +173,6 @@ export default function Menu({
     useState<boolean>(false);
   const [accountDialogVisible, setAccountDialogVisible] =
     useState<boolean>(false);
-  const [updateDialogVisible, setUpdateDialogVisible] =
-    useState<boolean>(false);
-  const [updateCheckingVisible, setUpdateCheckingVisible] =
-    useState<boolean>(false);
 
   const [fontsLoaded] = useFonts({
     Tetris: require("@/assets/font/Tetris.ttf"),
@@ -228,18 +222,6 @@ export default function Menu({
         onHelp={handleHelp}
         onAccount={handleAccount}
       />
-
-      {/* Update Checking Dialog */}
-      {updateCheckingVisible && (
-        <View style={styles.updateCheckingOverlay}>
-          <View style={styles.updateCheckingBox}>
-            <ActivityIndicator size="large" color="#3498db" />
-            <Text style={styles.updateCheckingText}>
-              Checking for updates...
-            </Text>
-          </View>
-        </View>
-      )}
 
       {/* Welcome Dialog */}
       <DialogBox
