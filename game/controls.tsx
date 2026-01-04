@@ -7,6 +7,8 @@ interface ControlsProps {
   onMoveDown: () => void;
   onMoveRight: () => void;
   onHardDrop: () => void;
+  onHold: () => void;
+  canHold: boolean;
   isPaused: boolean;
   gameOver: boolean;
 }
@@ -17,14 +19,20 @@ export default function Controls({
   onMoveDown,
   onMoveRight,
   onHardDrop,
+  onHold,
+  canHold,
   isPaused,
   gameOver,
 }: ControlsProps) {
-  const [rotatePressed, setRotatePressed] = useState<boolean>(false);
+  // Left Controls
   const [leftPressed, setLeftPressed] = useState<boolean>(false);
-  const [downPressed, setDownPressed] = useState<boolean>(false);
   const [rightPressed, setRightPressed] = useState<boolean>(false);
-  const [dropPressed, setDropPressed] = useState<boolean>(false);
+  const [downPressed, setDownPressed] = useState<boolean>(false);
+
+  // Right Controls
+  const [hardDropPressed, setHardDropPressed] = useState<boolean>(false);
+  const [rotatePressed, setRotatePressed] = useState<boolean>(false);
+  const [holdPressed, setHoldPressed] = useState<boolean>(false);
 
   const leftIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rightIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -169,15 +177,56 @@ export default function Controls({
         </View>
       </View>
 
-      {/* Action Buttons (Right side) - Game Boy style */}
+      {/* Action Buttons (Right side) - 3-button circular style */}
       <View style={styles.actionContainer}>
-        <View style={styles.actionButtonsWrapper}>
-          {/* B Button (Rotate) - Lower left */}
+        <View style={styles.actionTopRow}>
+          {/* Hold Button - Left position */}
           <Pressable
             style={[
               styles.controlButton,
               styles.actionButton,
-              styles.bButton,
+              styles.holdButton,
+              holdPressed && styles.controlButtonPressed,
+              (!canHold || disabled) && styles.controlButtonDisabled,
+            ]}
+            onPressIn={() => {
+              setHoldPressed(true);
+              onHold();
+            }}
+            onPressOut={() => setHoldPressed(false)}
+            disabled={!canHold || disabled}
+          >
+            <Text style={styles.controlButtonText}>H</Text>
+          </Pressable>
+
+          {/* Hard Drop Button - Right position */}
+          <Pressable
+            style={[
+              styles.controlButton,
+              styles.dropButton,
+              styles.actionButton,
+              styles.hardDropButton,
+              hardDropPressed && styles.dropButtonPressed,
+              disabled && styles.controlButtonDisabled,
+            ]}
+            onPressIn={() => {
+              setHardDropPressed(true);
+              onHardDrop();
+            }}
+            onPressOut={() => setHardDropPressed(false)}
+            disabled={disabled}
+          >
+            <Text style={styles.controlButtonText}>⬇</Text>
+          </Pressable>
+        </View>
+        {/* Bottom row: Rotate Button (centered) */}
+        <View style={styles.actionBottomRow}>
+          {/* Rotate Button - Bottom position */}
+          <Pressable
+            style={[
+              styles.controlButton,
+              styles.actionButton,
+              styles.rotateButton,
               rotatePressed && styles.controlButtonPressed,
               disabled && styles.controlButtonDisabled,
             ]}
@@ -198,26 +247,6 @@ export default function Controls({
             disabled={disabled}
           >
             <Text style={styles.controlButtonText}>↺</Text>
-          </Pressable>
-
-          {/* A Button (Hard Drop) - Upper right */}
-          <Pressable
-            style={[
-              styles.controlButton,
-              styles.dropButton,
-              styles.actionButton,
-              styles.aButton,
-              dropPressed && styles.dropButtonPressed,
-              disabled && styles.controlButtonDisabled,
-            ]}
-            onPressIn={() => {
-              setDropPressed(true);
-              onHardDrop();
-            }}
-            onPressOut={() => setDropPressed(false)}
-            disabled={disabled}
-          >
-            <Text style={styles.controlButtonText}>⬇</Text>
           </Pressable>
         </View>
       </View>
@@ -300,22 +329,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  actionButtonsWrapper: {
-    position: "relative",
-    width: 180,
-    height: 120,
+  actionTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 8,
+  },
+  actionBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   actionButton: {
-    position: "absolute",
+    right: -15,
+    margin: 10,
   },
-  bButton: {
-    bottom: 10,
-    left: 30,
-    transform: [{ rotate: "-15deg" }],
+  holdButton: {
+    backgroundColor: "#9b59b6",
+    borderColor: "#8e44ad",
   },
-  aButton: {
-    top: 10,
-    right: -10,
-    transform: [{ rotate: "-15deg" }],
-  },
+  rotateButton: {},
+  hardDropButton: {},
 });

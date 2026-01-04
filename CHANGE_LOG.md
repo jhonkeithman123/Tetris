@@ -1,12 +1,124 @@
 # Tetris Game - Change Log
 
+## [1.1.0] - 2026-01-04
+
+### Visual Enhancements
+
+- **Ghost Piece Preview**
+
+  - Added colored outline showing exactly where blocks will land
+  - Unique colors for each block type for easy identification
+  - Transparent outline that doesn't interfere with gameplay
+  - Real-time position updates as piece moves or rotates
+
+- **Motion Blur Animation**
+
+  - Stunning trail effect when using hard drop
+  - Multiple blur lines with varying opacity and thickness
+  - Glowing effect that follows the falling piece
+  - Smooth 60fps animation using native driver
+  - Trail fades as piece reaches destination
+
+- **Second Next Piece Preview**
+  - Display the next 2 upcoming pieces
+  - Helps with strategic planning
+  - Smaller preview for second piece
+  - Located in right panel below first next piece
+
+### Gameplay Improvements
+
+- **New Block Types**
+
+  - Diagonal Block: 3x3 diagonal pattern (rare)
+  - Reverse Diagonal Block: Mirrored diagonal (rare)
+  - Straight Z Block: Extended Z-shape, 4 cells wide (uncommon)
+  - Reverse Straight Z Block: Mirrored straight Z (uncommon)
+  - Long L Block: 5-cell L-shape (very rare)
+  - Reverse Long L Block: Mirrored long L (very rare)
+
+- **Weighted Block Spawning**
+
+  - Classic pieces (I, O, T, S, Z, J, L) spawn 85-90% of the time
+  - Special pieces are uncommon to rare
+  - Cross block remains super rare (1% spawn rate)
+  - Balanced difficulty progression
+
+- **Enhanced Hard Drop**
+  - Instant piece placement without snap-back bug
+  - Smooth animation completion before next piece spawns
+  - Motion blur visual feedback
+  - Improved collision detection
+
+### Controls Update
+
+- **Redesigned Layout**
+
+  - Separated right-side controls for better accessibility
+  - Hold button (top-left), Rotate button (top-right)
+  - Hard Drop button centered at bottom
+  - Increased spacing between D-pad buttons
+  - Better touch target sizes
+
+- **Improved Responsiveness**
+  - Visual feedback for all button presses
+  - Continuous hold support for movement and rotation
+  - Reduced input delay
+  - Better pressure detection
+
+### Technical Improvements
+
+- **Audio System Migration**
+
+  - Migrated from deprecated expo-av to expo-audio
+  - Improved audio performance with AudioPlayer API
+  - Better sound effect pooling and reusability
+  - Reduced memory footprint for audio playback
+
+- **Keep-Awake Functionality**
+
+  - Screen stays on during active gameplay
+  - Automatically deactivates when paused or in menu
+  - Graceful error handling for device compatibility
+
+- **Metro Bundler Optimization**
+
+  - Fixed symlink resolution issues
+  - Improved module path handling
+
+- **Performance**
+  - Native driver for all animations (60fps)
+  - Optimized rendering for ghost piece
+  - Enhanced audio playback efficiency
+
+### User Interface
+
+- **Patch Notes Screen**
+
+  - Accessible from burger menu
+  - Detailed version history
+  - Organized by feature categories
+  - Easy-to-read formatting
+
+- **Updated Help Screen**
+  - Documented ghost piece feature
+  - Explained motion blur animation
+  - Added all new block types
+  - Enhanced pro tips section
+  - Visual features section
+
+### Bug Fixes
+
+- Fixed piece snapping back after hard drop placement
+- Resolved ghost piece color matching real piece
+- Fixed Metro bundler path resolution errors
+- Corrected block spawning probability calculations
+- Fixed keep-awake activation errors
+
+---
+
 ## [1.0.0] - 2026-01-02
 
-<<<<<<< HEAD
-### Released[https://github.com/jhonkeithman123/Tetris/releases]
-=======
-### Released[https://github.com/jhonkeithman123/Tetris/releases] 
->>>>>>> a61c3c7c808af32e6653bd5536c3a51311564aa2
+### Released [https://github.com/jhonkeithman123/Tetris/releases]
 
 Production release for Android
 
@@ -96,9 +208,11 @@ Production release for Android
 
 - Multiplayer mode
 - Cloud save synchronization
-- Leaderboard system
+- Online leaderboard system
 - Additional difficulty modes (Hard, Easy)
 - Customizable themes and color schemes
 - Accessibility features (colorblind modes)
 - Game replay system
 - Achievements and badges
+- Profile system with account management
+- Social features (friend challenges)

@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { CURRENT_VERSION, GITHUB_OWNER } from "./components/BurgerMenu";
 
 interface SettingsProps {
   onBack: () => void;
@@ -129,8 +130,9 @@ export default function Settings({
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
-          <Text style={styles.aboutText}>Tetris Game v1.0</Text>
+          <Text style={styles.aboutText}>Tetris Game v{CURRENT_VERSION}</Text>
           <Text style={styles.aboutText}>Built with React Native</Text>
+          <Text style={styles.aboutText}>Made by {GITHUB_OWNER}</Text>
         </View>
 
         {/* Back Button */}

@@ -12,10 +12,10 @@ import {
 import DialogBox from "./Dialog";
 
 // GitHub configuration
-const GITHUB_OWNER = "jhonkeithman123";
+export const GITHUB_OWNER = "jhonkeithman123";
 const GITHUB_REPO = "Tetris";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-const CURRENT_VERSION = "1.0.0"; // TODO: UPDATE MANUALLY
+export const CURRENT_VERSION = "1.1.0"; // TODO: UPDATE MANUALLY
 
 interface GitHubRelease {
   tag_name: string;
@@ -29,10 +29,12 @@ const BurgerMenu = ({
   onExit,
   onHelp,
   onAccount,
+  onPatchNotes,
 }: {
   onExit: () => void;
   onHelp: () => void;
   onAccount: () => void;
+  onPatchNotes: () => void;
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [updateDialogVisible, setUpdateDialogVisible] =
@@ -78,7 +80,18 @@ const BurgerMenu = ({
   const checkForUpdates = async () => {
     setUpdateCheckingVisible(true);
     try {
-      const response = await fetch(GITHUB_API_URL);
+      const response = await fetch(GITHUB_API_URL, {
+        method: "GET",
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Tetris-Game-App",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`GitHub API returned ${response.status}`);
+      }
+
       const data: GitHubRelease = await response.json();
 
       if (compareVersions(data.tag_name, CURRENT_VERSION)) {
@@ -91,6 +104,15 @@ const BurgerMenu = ({
     } catch (error) {
       console.error("Error checking for updates:", error);
       setUpdateCheckingVisible(false);
+      // Show error dialog to user
+      setUpToDateDialogVisible(true);
+      setUpdateInfo({
+        tag_name: CURRENT_VERSION,
+        name: "Error",
+        body: "Unable to check for updates. Please check your internet connection and try again.",
+        html_url: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
+        published_at: new Date().toISOString(),
+      });
     }
   };
 
@@ -178,6 +200,16 @@ const BurgerMenu = ({
           }}
         >
           <Text style={styles.menuItemText}>❓ Help</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.menuItem}
+          onPress={() => {
+            setIsOpen(false);
+            onPatchNotes();
+          }}
+        >
+          <Text style={styles.menuItemText}>📝 Patch Notes</Text>
         </Pressable>
 
         <Pressable

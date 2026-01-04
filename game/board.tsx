@@ -35,6 +35,7 @@ export default function Board({
                 color={cell.color}
                 size={cellSize}
                 isEmpty={!cell.filled}
+                isGhost={cell.isGhost}
               />
             ))}
           </View>

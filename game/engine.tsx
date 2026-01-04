@@ -11,12 +11,13 @@ export interface Piece {
 export interface BoardCell {
   filled: boolean;
   color?: BlockColor;
+  isGhost?: boolean;
 }
 
 // Tetromino shapes
 export const SHAPES: { [key: string]: number[][][] } = {
+  // I piece
   straight_block: [
-    // I piece
     [
       [0, 0, 0, 0],
       [1, 1, 1, 1],
@@ -30,15 +31,15 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 0, 1, 0],
     ],
   ],
+  // O piece
   square_block: [
-    // O piece
     [
       [1, 1],
       [1, 1],
     ],
   ],
+  // T piece
   short_T_block: [
-    // T piece
     [
       [0, 1, 0],
       [1, 1, 1],
@@ -60,8 +61,8 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 1, 0],
     ],
   ],
+  // S piece
   zig_block: [
-    // S piece
     [
       [0, 1, 1],
       [1, 1, 0],
@@ -73,8 +74,8 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 0, 1],
     ],
   ],
+  // Z piece (reverse of S)
   reverse_zig_block: [
-    // Z piece (reverse of S)
     [
       [1, 1, 0],
       [0, 1, 1],
@@ -86,16 +87,16 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 1, 0],
     ],
   ],
+  // + piece (rare)
   cross_block: [
-    // + piece (rare)
     [
       [0, 1, 0],
       [1, 1, 1],
       [0, 1, 0],
     ],
   ],
+  // J piece
   short_L_block: [
-    // J piece
     [
       [1, 0, 0],
       [1, 1, 1],
@@ -117,8 +118,8 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [1, 1, 0],
     ],
   ],
+  // mirrored J piece
   reverse_short_L_block: [
-    // mirrored J piece
     [
       [0, 0, 1],
       [1, 1, 1],
@@ -140,8 +141,8 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 1, 1],
     ],
   ],
+  // L piece
   L_block: [
-    // L piece
     [
       [0, 0, 1],
       [1, 1, 1],
@@ -163,8 +164,8 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 1, 0],
     ],
   ],
+  // Reverse L piece (mirror of L)
   reverse_L_block: [
-    // Reverse L piece (mirror of L)
     [
       [1, 0, 0],
       [1, 1, 1],
@@ -184,22 +185,137 @@ export const SHAPES: { [key: string]: number[][][] } = {
       [0, 1, 0],
       [0, 1, 0],
       [1, 1, 0],
+    ],
+  ],
+  // Diagonal block
+  diagonal_block: [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    [
+      [0, 0, 1],
+      [0, 1, 0],
+      [1, 0, 0],
+    ],
+  ],
+  // Reverse diagonal block
+  reverse_diagonal_block: [
+    [
+      [0, 0, 1],
+      [0, 1, 0],
+      [1, 0, 0],
+    ],
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  ],
+  // Straight Z block
+  straight_Z_block: [
+    [
+      [0, 0, 0, 1],
+      [1, 1, 1, 1],
+      [1, 0, 0, 0],
+    ],
+    [
+      [1, 1, 0],
+      [0, 1, 0],
+      [0, 1, 0],
+      [0, 1, 1],
+    ],
+  ],
+  // Reverse straight Z block
+  reverse_straight_Z_block: [
+    [
+      [1, 0, 0, 0],
+      [1, 1, 1, 1],
+      [0, 0, 0, 1],
+    ],
+    [
+      [0, 1, 1],
+      [0, 1, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ],
+  ],
+  // Long L block
+  long_L_block: [
+    [
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+    ],
+    [
+      [0, 0, 0, 0],
+      [1, 1, 1, 1],
+      [1, 0, 0, 0],
+    ],
+    [
+      [0, 1, 1],
+      [0, 0, 1],
+      [0, 0, 1],
+      [0, 0, 1],
+    ],
+    [
+      [0, 0, 0, 1],
+      [1, 1, 1, 1],
+      [0, 0, 0, 0],
+    ],
+  ],
+  // Reverse Long L Block
+  reverse_long_L_block: [
+    [
+      [0, 0, 1],
+      [0, 0, 1],
+      [0, 0, 1],
+      [0, 1, 1],
+    ],
+    [
+      [1, 0, 0, 0],
+      [1, 1, 1, 1],
+      [0, 0, 0, 0],
+    ],
+    [
+      [1, 1, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+    ],
+    [
+      [0, 0, 0, 0],
+      [1, 1, 1, 1],
+      [0, 0, 0, 1],
     ],
   ],
 };
 
 // Probability of piece generation (cross_block is rare)
 const PIECE_PROBABILITY: { [key: string]: number } = {
-  straight_block: 10,
-  square_block: 10,
-  short_T_block: 10,
-  zig_block: 10,
-  reverse_zig_block: 10,
-  short_L_block: 10,
-  reverse_short_L_block: 10,
-  L_block: 10,
-  reverse_L_block: 10,
-  cross_block: 2, // Rare piece
+  // Classic pieces - High frequency
+  straight_block: 15,
+  square_block: 15,
+  short_T_block: 14,
+  zig_block: 15,
+  reverse_zig_block: 15,
+  short_L_block: 15,
+  reverse_short_L_block: 15,
+  L_block: 15,
+  reverse_L_block: 15,
+
+  // Special pieces
+  diagonal_block: 6,
+  reverse_diagonal_block: 5,
+  straight_Z_block: 5,
+  reverse_straight_Z_block: 4,
+  long_L_block: 3,
+  reverse_long_L_block: 3,
+
+  // Rare piece
+  cross_block: 1, // Rare piece
 };
 
 export const BOARD_WIDTH = 10;
@@ -452,4 +568,78 @@ export const updateCombo = (
   }
   // Reset combo if no lines cleared
   return 0;
+};
+
+/**
+ * Calculate ghost piece position (where piece will land)
+ */
+export const calculateGhostPiece = (
+  piece: Piece,
+  board: BoardCell[][]
+): Piece => {
+  return hardDrop(piece, board);
+};
+
+/**
+ * Render board with both current piece and ghost piece
+ */
+export const renderBoardWithPieceAndGhost = (
+  board: BoardCell[][],
+  piece: Piece | null
+): BoardCell[][] => {
+  const displayBoard = board.map((row) => row.map((cell) => ({ ...cell })));
+
+  if (piece) {
+    // First render ghost piece (semi-transparent)
+    const ghostPiece = calculateGhostPiece(piece, board);
+
+    // Only render ghost if it's not at the same position as current piece
+    if (ghostPiece.y !== piece.y) {
+      for (let y = 0; y < ghostPiece.shape.length; y++) {
+        for (let x = 0; x < ghostPiece.shape[y].length; x++) {
+          if (ghostPiece.shape[y][x]) {
+            const boardY = ghostPiece.y + y;
+            const boardX = ghostPiece.x + x;
+            if (
+              boardY >= 0 &&
+              boardY < BOARD_HEIGHT &&
+              boardX >= 0 &&
+              boardX < BOARD_WIDTH &&
+              !displayBoard[boardY][boardX].filled
+            ) {
+              displayBoard[boardY][boardX] = {
+                filled: true,
+                color: piece.color,
+                isGhost: true, // Mark as ghost piece
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // Then render actual piece on top
+    for (let y = 0; y < piece.shape.length; y++) {
+      for (let x = 0; x < piece.shape[y].length; x++) {
+        if (piece.shape[y][x]) {
+          const boardY = piece.y + y;
+          const boardX = piece.x + x;
+
+          if (
+            boardY >= 0 &&
+            boardY < BOARD_HEIGHT &&
+            boardX >= 0 &&
+            boardX < BOARD_WIDTH
+          ) {
+            displayBoard[boardY][boardX] = {
+              filled: true,
+              color: piece.color,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return displayBoard;
 };

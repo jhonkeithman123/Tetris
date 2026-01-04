@@ -3,6 +3,7 @@ import useSound from "@/app/hooks/useSound";
 import storeManager from "@/app/utils/storeManager";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   BackHandler,
   Dimensions,
   Image,
@@ -27,7 +28,7 @@ import {
   mergePiece,
   movePiece,
   Piece,
-  renderBoardWithPiece,
+  renderBoardWithPieceAndGhost,
   rotatePiece,
 } from "./engine";
 
@@ -66,14 +67,23 @@ export default function TetrisGame({
   const [restartPressed, setRestartPressed] = useState<boolean>(false);
   const [menuPressed, setMenuPressed] = useState<boolean>(false);
   const [backDialogVisible, setBackDialogVisible] = useState<boolean>(false);
-  const [holdPressed, setHoldPressed] = useState<boolean>(false);
+  // const [holdPressed, setHoldPressed] = useState<boolean>(false);
   const [pausePressed, setPausePressed] = useState<boolean>(false);
 
+  // Game Board
   const [board, setBoard] = useState<BoardCell[][]>(createEmptyBoard());
+
+  // Game Effects
+  const [isDropAnimating, setIsDropAnimating] = useState<boolean>(false);
+  const [dropStartY, setDropStartY] = useState<number>(0);
+  const [dropEndY, setDropEndY] = useState<number>(0);
+  const dropAnimation = useRef(new Animated.Value(0)).current;
+  const trailOpacity = useRef(new Animated.Value(0)).current;
 
   // Game Logic States
   const [currentPiece, setCurrentPiece] = useState<Piece | null>(null);
-  const [nextPiece, setNextPiece] = useState<Piece | null>(null);
+  const [nextPiece, setNextPiece] = useState<Piece | null>(null); // First nect piece
+  const [nextNextPiece, setNextNextPiece] = useState<Piece | null>(null); // Second next piece
   const [heldPiece, setHeldPiece] = useState<Piece | null>(null);
   const [canHold, setCanHold] = useState<boolean>(true);
   const [rotation, setRotation] = useState<number>(0);
@@ -273,8 +283,9 @@ export default function TetrisGame({
       return;
     }
 
-    setCurrentPiece(piece);
-    setNextPiece(createPiece());
+    setCurrentPiece(piece); // Current piece
+    setNextPiece(nextNextPiece || createPiece()); // Use second nex piece
+    setNextNextPiece(createPiece()); // Generate new second next piece
     setRotation(0);
     setCanHold(true);
     lastDropTimeRef.current = Date.now();
@@ -299,10 +310,13 @@ export default function TetrisGame({
       comboTimerRef.current = null;
     }
 
-    const firstPiece = createPiece();
-    const second = createPiece();
+    const firstPiece = createPiece(); // Current piece
+    const second = createPiece(); // Next piece
+    const third = createPiece(); // Second Next piece
+
     setCurrentPiece(firstPiece);
     setNextPiece(second);
+    setNextNextPiece(third);
     setRotation(0);
     lastDropTimeRef.current = Date.now();
   };
@@ -416,7 +430,8 @@ export default function TetrisGame({
       });
       const piece = nextPiece || createPiece();
       setCurrentPiece(piece);
-      setNextPiece(createPiece());
+      setNextPiece(nextNextPiece || createPiece());
+      setNextNextPiece(createPiece());
       setRotation(0);
     }
 
@@ -482,24 +497,46 @@ export default function TetrisGame({
   };
 
   const handleHardDrop = () => {
-    if (!currentPiece || isPaused || gameOver) return;
+    if (!currentPiece || isPaused || gameOver || isDropAnimating) return;
 
     const droppedPiece = hardDrop(currentPiece, board);
-    soundHook.playEffect("hard_drop");
-    setCurrentPiece(droppedPiece);
+    const dropDistance = droppedPiece.y - currentPiece.y;
 
-    setTimeout(() => {
+    if (dropDistance === 0) return; // Already at the bottom
+
+    setDropStartY(currentPiece.y);
+    setDropEndY(droppedPiece.y);
+    setIsDropAnimating(true);
+    soundHook.playEffect("hard_drop");
+
+    // Animate drop
+    dropAnimation.setValue(0);
+    trailOpacity.setValue(1);
+
+    // Animate the drop with trail
+    Animated.parallel([
+      Animated.timing(dropAnimation, {
+        toValue: 1,
+        duration: Math.min(250, dropDistance * 25),
+        useNativeDriver: true,
+      }),
+      Animated.timing(trailOpacity, {
+        toValue: 0,
+        duration: Math.min(350, dropDistance * 35),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // After animation completes, merge the piece
       const mergedBoard = mergePiece(droppedPiece, board);
       const { newBoard, linesCleared } = clearLines(mergedBoard);
-
       setBoard(newBoard);
+      setCurrentPiece(null);
+      setIsDropAnimating(false);
 
       if (linesCleared > 0) {
-        // Increment combo
         const newCombo = Math.min(combo + 1, 7);
         setCombo(newCombo);
 
-        // Calculate score with combo bonus
         const baseScore = calculateScore(linesCleared, level);
         const comboBonus = calculateComboBonus(newCombo);
         const totalScore = baseScore + comboBonus;
@@ -507,10 +544,8 @@ export default function TetrisGame({
         setLines((prev) => prev + linesCleared);
         setScore((prev) => prev + totalScore);
 
-        // Reset combo timer
         resetComboTimer();
 
-        // Play combo sounds
         if (newCombo === 1) soundHook.playCombo("combo1");
         else if (newCombo === 2) soundHook.playCombo("combo2");
         else if (newCombo === 3) soundHook.playCombo("combo3");
@@ -519,7 +554,6 @@ export default function TetrisGame({
         else if (newCombo === 6) soundHook.playCombo("combo6");
         else if (newCombo === 7) soundHook.playCombo("combo7");
       } else {
-        // Clear combo timer
         if (comboTimerRef.current) {
           clearTimeout(comboTimerRef.current);
           comboTimerRef.current = null;
@@ -528,7 +562,7 @@ export default function TetrisGame({
       }
 
       spawnNewPiece();
-    }, 50);
+    });
   };
 
   const handleRestart = () => {
@@ -585,21 +619,6 @@ export default function TetrisGame({
                   </View>
                 )}
               </View>
-              <Pressable
-                onPressIn={() => setHoldPressed(true)}
-                onPressOut={() => setHoldPressed(false)}
-                onPress={handleHold}
-                disabled={!canHold}
-                style={[
-                  styles.holdButton,
-                  !canHold && styles.holdButtonDisabled,
-                  holdPressed && styles.holdButtonPressed,
-                ]}
-              >
-                <Text style={styles.holdButtonText}>
-                  {canHold ? "HOLD" : "LOCKED"}
-                </Text>
-              </Pressable>
             </View>
 
             <View style={styles.statBox}>
@@ -654,11 +673,109 @@ export default function TetrisGame({
           {/* Game Board */}
           <View style={styles.boardWrapper}>
             <Board
-              board={renderBoardWithPiece(board, currentPiece)}
+              board={renderBoardWithPieceAndGhost(board, currentPiece)}
               cellSize={CELL_SIZE}
               boardWidth={BOARD_WIDTH}
               boardHeight={BOARD_HEIGHT}
             />
+
+            {/* Motion blur trail effect during hard drop */}
+            {isDropAnimating && currentPiece && (
+              <Animated.View
+                style={[
+                  styles.motionTrailContainer,
+                  {
+                    opacity: trailOpacity,
+                  },
+                ]}
+              >
+                {/* Create more trail lines for denser effect */}
+                {[...Array(Math.max(5, Math.ceil(dropEndY - dropStartY)))].map(
+                  (_, index) => {
+                    const totalLines = Math.max(
+                      5,
+                      Math.ceil(dropEndY - dropStartY)
+                    );
+                    const progress = index / totalLines;
+                    const startY =
+                      (dropStartY + progress * (dropEndY - dropStartY)) *
+                      CELL_SIZE;
+                    const endY = (dropEndY - (1 - progress) * 0.5) * CELL_SIZE;
+
+                    return (
+                      <Animated.View
+                        key={index}
+                        style={[
+                          styles.trailLine,
+                          {
+                            top: startY,
+                            left: currentPiece.x * CELL_SIZE + 1,
+                            width: currentPiece.shape[0].length * CELL_SIZE - 2,
+                            height: 2 + progress * 2, // Varying thickness
+                            opacity: trailOpacity.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0, 0.8 - progress * 0.6],
+                            }),
+                            transform: [
+                              {
+                                translateY: dropAnimation.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [0, endY - startY],
+                                }),
+                              },
+                              {
+                                scaleY: dropAnimation.interpolate({
+                                  inputRange: [0, 0.5, 1],
+                                  outputRange: [
+                                    0.5,
+                                    2 + progress * 2,
+                                    1.5 + progress,
+                                  ],
+                                }),
+                              },
+                            ],
+                          },
+                        ]}
+                      />
+                    );
+                  }
+                )}
+
+                {/* Main piece glow effect */}
+                <Animated.View
+                  style={[
+                    styles.glowEffect,
+                    {
+                      top: dropStartY * CELL_SIZE,
+                      left: currentPiece.x * CELL_SIZE,
+                      width: currentPiece.shape[0].length * CELL_SIZE,
+                      height: currentPiece.shape.length * CELL_SIZE,
+                      opacity: trailOpacity.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 0.5],
+                      }),
+                      transform: [
+                        {
+                          translateY: dropAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [
+                              0,
+                              (dropEndY - dropStartY) * CELL_SIZE,
+                            ],
+                          }),
+                        },
+                        {
+                          scale: dropAnimation.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [1, 1.2, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              </Animated.View>
+            )}
 
             {gameOver && (
               <View style={styles.gameOverOverlay}>
@@ -719,6 +836,31 @@ export default function TetrisGame({
               </View>
             </View>
 
+            {/* Second next peice box */}
+            <View style={styles.nextBox}>
+              <Text style={styles.nextLabel}>NEXT 2</Text>
+              <View style={styles.nextPieceContainer}>
+                {nextNextPiece && (
+                  <View style={{ opacity: 0.7 }}>
+                    {nextNextPiece.shape.map((row, y) => (
+                      <View key={y} style={{ flexDirection: "row" }}>
+                        {row.map((cell, x) => (
+                          <View
+                            key={`${y}-${x}`}
+                            style={{
+                              width: 8,
+                              height: 8,
+                              backgroundColor: cell ? "#3498db" : "transparent",
+                            }}
+                          />
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+
             {/* Level Box */}
             <View style={styles.levelBox}>
               <Text style={styles.levelLabel}>LEVEL</Text>
@@ -767,6 +909,8 @@ export default function TetrisGame({
           onMoveDown={handleMoveDown}
           onMoveRight={handleMoveRight}
           onHardDrop={handleHardDrop}
+          onHold={handleHold}
+          canHold={canHold}
           isPaused={isPaused}
           gameOver={gameOver}
         />
@@ -827,22 +971,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f0f1e",
     borderRadius: 4,
     marginBottom: 6,
-  },
-  holdButton: {
-    backgroundColor: "#9b59b6",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    minWidth: 60,
-    alignItems: "center",
-  },
-  holdButtonDisabled: {
-    backgroundColor: "#555",
-    opacity: 0.5,
-  },
-  holdButtonPressed: {
-    backgroundColor: "#8e44ad",
-    transform: [{ scale: 0.95 }],
   },
   holdButtonText: {
     fontSize: 10,
@@ -973,6 +1101,35 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#0f0f1e",
     borderRadius: 4,
+  },
+  motionTrailContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: "none",
+    zIndex: 10,
+  },
+  trailLine: {
+    position: "absolute",
+    backgroundColor: "#00FFFF",
+    borderRadius: 1,
+    shadowColor: "#00FFFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  glowEffect: {
+    position: "absolute",
+    backgroundColor: "rgba(0, 255, 255, 0.4)",
+    borderRadius: 4,
+    shadowColor: "#00FFFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 15,
+    elevation: 10,
   },
   levelBox: {
     backgroundColor: "#1a1a2e",

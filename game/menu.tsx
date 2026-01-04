@@ -26,6 +26,7 @@ interface MenuProps {
   onShowSettings?: () => void;
   onShowLeaderboard?: () => void;
   onHelp?: () => void;
+  onPatchNotes?: () => void;
 }
 
 interface FallingBlock {
@@ -163,6 +164,7 @@ export default function Menu({
   onShowSettings,
   onShowLeaderboard,
   onHelp,
+  onPatchNotes,
 }: MenuProps) {
   const [playPressed, setPlayPressed] = useState<boolean>(false);
   const [leaderboardPressed, setLeaderboardPressed] = useState<boolean>(false);
@@ -212,6 +214,12 @@ export default function Menu({
     setAccountDialogVisible(true);
   };
 
+  const handlePatchNotes = () => {
+    if (onPatchNotes) {
+      onPatchNotes();
+    }
+  };
+
   return (
     <View style={styles.container}>
       <GridBackground />
@@ -221,6 +229,7 @@ export default function Menu({
         onExit={() => setQuitDialogVisible(true)}
         onHelp={handleHelp}
         onAccount={handleAccount}
+        onPatchNotes={handlePatchNotes}
       />
 
       {/* Welcome Dialog */}

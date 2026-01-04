@@ -15,88 +15,69 @@ export default function useSound() {
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [sfxVolume, setSfxVolume] = useState(0.7);
 
-  const backgroundMusicRef = useRef<Audio.Sound | null>(null);
+  const musicPlayerRef = useRef<Audio.Sound | null>(null);
   const currentMusicRef = useRef<Musics | null>(null);
   const isInitializedRef = useRef(false);
   const isMusicLoadingRef = useRef(false);
+  const soundEffectsPoolRef = useRef<Map<string, Audio.Sound>>(new Map());
 
   useEffect(() => {
-    const setupAudio = async () => {
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-        });
-        isInitializedRef.current = true;
-      } catch (error) {
-        console.error("Error setting up audio:", error);
-      }
-    };
-
-    setupAudio();
+    isInitializedRef.current = true;
 
     return () => {
-      stopMusic();
+      // Cleanup sound effects
+      soundEffectsPoolRef.current.forEach(async (sound) => {
+        try {
+          await sound.unloadAsync();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      });
+      soundEffectsPoolRef.current.clear();
+
+      // Cleanup music
+      if (musicPlayerRef.current) {
+        try {
+          musicPlayerRef.current.unloadAsync();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
     };
   }, []);
-
-  // Update music volume when musicEnabled changes
-  useEffect(() => {
-    if (backgroundMusicRef.current) {
-      const updateVolume = async () => {
-        try {
-          const status = await backgroundMusicRef.current!.getStatusAsync();
-          if (status.isLoaded) {
-            await backgroundMusicRef.current!.setVolumeAsync(
-              musicEnabled ? musicVolume : 0
-            );
-          }
-        } catch (error) {
-          console.error("Error updating music volume:", error);
-        }
-      };
-      updateVolume();
-    }
-  }, [musicEnabled, musicVolume]);
 
   const playMusic = async (music: Musics, loop: boolean = true) => {
     if (!isInitializedRef.current || isMusicLoadingRef.current) return;
 
-    // Don't restart the same music
-    if (currentMusicRef.current === music && backgroundMusicRef.current) {
+    // Don't restart the same music if already playing
+    if (currentMusicRef.current === music && musicPlayerRef.current) {
       try {
-        const status = await backgroundMusicRef.current.getStatusAsync();
+        const status = await musicPlayerRef.current.getStatusAsync();
         if (status.isLoaded && status.isPlaying) {
-          return; // Already playing this music
+          return;
         }
       } catch (error) {
-        console.log("Sound not loaded, loading new music");
+        console.log("Music player error, reloading");
       }
     }
 
     try {
       isMusicLoadingRef.current = true;
 
-      // Stop current music if playing
-      if (backgroundMusicRef.current) {
-        try {
-          await backgroundMusicRef.current.stopAsync();
-          await backgroundMusicRef.current.unloadAsync();
-        } catch (e) {
-          // Ignore errors during cleanup
-        }
-        backgroundMusicRef.current = null;
-        currentMusicRef.current = null;
+      // Unload previous music
+      if (musicPlayerRef.current) {
+        await musicPlayerRef.current.unloadAsync();
+        musicPlayerRef.current = null;
       }
 
+      // Load and play new music
       const { sound } = await Audio.Sound.createAsync(musics[music], {
+        shouldPlay: true,
         isLooping: loop,
         volume: musicEnabled ? musicVolume : 0,
-        shouldPlay: true,
       });
 
-      backgroundMusicRef.current = sound;
+      musicPlayerRef.current = sound;
       currentMusicRef.current = music;
       isMusicLoadingRef.current = false;
     } catch (error) {
@@ -107,24 +88,23 @@ export default function useSound() {
   };
 
   const stopMusic = async () => {
-    if (backgroundMusicRef.current) {
+    if (musicPlayerRef.current) {
       try {
-        await backgroundMusicRef.current.stopAsync();
-        await backgroundMusicRef.current.unloadAsync();
+        await musicPlayerRef.current.stopAsync();
+        await musicPlayerRef.current.setPositionAsync(0);
       } catch (error) {
         // Ignore errors during cleanup
       }
-      backgroundMusicRef.current = null;
       currentMusicRef.current = null;
     }
   };
 
   const pauseMusic = async () => {
-    if (backgroundMusicRef.current) {
+    if (musicPlayerRef.current) {
       try {
-        const status = await backgroundMusicRef.current.getStatusAsync();
+        const status = await musicPlayerRef.current.getStatusAsync();
         if (status.isLoaded && status.isPlaying) {
-          await backgroundMusicRef.current.pauseAsync();
+          await musicPlayerRef.current.pauseAsync();
         }
       } catch (error) {
         console.error("Error pausing music:", error);
@@ -133,11 +113,11 @@ export default function useSound() {
   };
 
   const resumeMusic = async () => {
-    if (backgroundMusicRef.current) {
+    if (musicPlayerRef.current) {
       try {
-        const status = await backgroundMusicRef.current.getStatusAsync();
+        const status = await musicPlayerRef.current.getStatusAsync();
         if (status.isLoaded && !status.isPlaying) {
-          await backgroundMusicRef.current.playAsync();
+          await musicPlayerRef.current.playAsync();
         }
       } catch (error) {
         console.error("Error resuming music:", error);
@@ -153,17 +133,34 @@ export default function useSound() {
         return;
       }
 
+      // Check if we have a cached sound effect
+      const cachedSound = soundEffectsPoolRef.current.get(effect);
+      if (cachedSound) {
+        try {
+          // Replay from beginning
+          await cachedSound.setPositionAsync(0);
+          await cachedSound.setVolumeAsync(sfxVolume);
+          await cachedSound.playAsync();
+          return;
+        } catch (e) {
+          // Sound might be in bad state, remove from pool
+          soundEffectsPoolRef.current.delete(effect);
+          try {
+            await cachedSound.unloadAsync();
+          } catch (cleanupError) {
+            // Ignore cleanup errors
+          }
+        }
+      }
+
+      // Create new sound
       const { sound } = await Audio.Sound.createAsync(soundEffects[effect], {
-        volume: sfxVolume,
         shouldPlay: true,
+        volume: sfxVolume,
       });
 
-      // Auto-cleanup after playing
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync().catch(() => {});
-        }
-      });
+      // Add to pool for reuse
+      soundEffectsPoolRef.current.set(effect, sound);
     } catch (error) {
       // Silently fail for missing or invalid sound files
     }
@@ -177,15 +174,16 @@ export default function useSound() {
         return;
       }
 
+      // Create one-time sound for combo sounds
       const { sound } = await Audio.Sound.createAsync(COMBO[combo], {
-        volume: sfxVolume,
         shouldPlay: true,
+        volume: sfxVolume,
       });
 
-      // Auto-cleanup after playing
+      // Auto-cleanup when finished
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync().catch(() => {});
+          sound.unloadAsync();
         }
       });
     } catch (error) {
@@ -195,36 +193,25 @@ export default function useSound() {
 
   const setMusicVolumeLevel = async (volume: number) => {
     setMusicVolume(volume);
-    if (backgroundMusicRef.current) {
+    if (musicPlayerRef.current) {
       try {
-        const status = await backgroundMusicRef.current.getStatusAsync();
-        if (status.isLoaded) {
-          await backgroundMusicRef.current.setVolumeAsync(
-            musicEnabled && volume > 0 ? volume : 0
-          );
-        }
+        await musicPlayerRef.current.setVolumeAsync(
+          musicEnabled && volume > 0 ? volume : 0
+        );
       } catch (error) {
         console.error("Error setting music volume:", error);
       }
     }
   };
 
-  const toggleMusicEnabled = (enabled: boolean) => {
+  const toggleMusicEnabled = async (enabled: boolean) => {
     setMusicEnabled(enabled);
-    if (backgroundMusicRef.current) {
-      const updateVolume = async () => {
-        try {
-          const status = await backgroundMusicRef.current!.getStatusAsync();
-          if (status.isLoaded) {
-            await backgroundMusicRef.current!.setVolumeAsync(
-              enabled ? musicVolume : 0
-            );
-          }
-        } catch (error) {
-          console.error("Error toggling music:", error);
-        }
-      };
-      updateVolume();
+    if (musicPlayerRef.current) {
+      try {
+        await musicPlayerRef.current.setVolumeAsync(enabled ? musicVolume : 0);
+      } catch (error) {
+        console.error("Error toggling music:", error);
+      }
     }
   };
 

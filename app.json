@@ -2,7 +2,7 @@
   "expo": {
     "name": "Tetris",
     "slug": "Tetris",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tetris",
@@ -24,7 +24,8 @@
       "package": "com.jhonkeithman123.Tetris",
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "INTERNET"
       ]
     },
     "web": {
@@ -51,7 +52,8 @@
           "microphonePermission": "Allow Tetris to access your microphone."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

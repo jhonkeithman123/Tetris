@@ -1,19 +1,22 @@
 import Help from "@/app/Help";
 import useSound from "@/app/hooks/useSound";
+import PatchNotes from "@/app/PatchNotes";
 import Settings from "@/app/Settings";
 import Menu from "@/game/menu";
 import TetrisGame from "@/game/TetrisGame";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import React, { useEffect, useRef, useState } from "react";
 import { StatusBar, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
-type Screen = "menu" | "game" | "settings" | "help";
+type Screen = "menu" | "game" | "settings" | "help" | "patchnotes";
 
 export default function HomeScreen() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("menu");
   const soundHook = useSound();
   const previousScreenRef = useRef<Screen | null>(null);
   const isInitialMount = useRef(true);
+  const keepAwakeActiveRef = useRef(false);
 
   useEffect(() => {
     // Play menu music on initial mount
@@ -31,6 +34,71 @@ export default function HomeScreen() {
     }
 
     previousScreenRef.current = currentScreen;
+  }, [currentScreen]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const handleKeepAwake = async () => {
+      if (!isMounted) return;
+
+      // Skip keep-awake in development to avoid screen-off errors
+      if (__DEV__) {
+        console.log("Keep awake disabled in development mode");
+        return;
+      }
+
+      if (currentScreen === "game") {
+        // Activate keep awake
+        if (!keepAwakeActiveRef.current) {
+          try {
+            await activateKeepAwakeAsync();
+            if (isMounted) {
+              keepAwakeActiveRef.current = true;
+            }
+          } catch (error) {
+            // Keep awake not supported on this device/emulator
+            if (isMounted) {
+              keepAwakeActiveRef.current = false;
+            }
+          }
+        }
+      } else {
+        // Deactivate keep awake
+        if (keepAwakeActiveRef.current) {
+          try {
+            await deactivateKeepAwake();
+            if (isMounted) {
+              keepAwakeActiveRef.current = false;
+            }
+          } catch (error) {
+            // Ignore deactivation errors
+            if (isMounted) {
+              keepAwakeActiveRef.current = false;
+            }
+          }
+        }
+      }
+    };
+
+    // Call the function and suppress any unhandled rejections
+    handleKeepAwake().catch((error) => {
+      // Suppress all keep-awake errors
+      console.log("Keep awake error suppressed:", error.message);
+    });
+
+    return () => {
+      isMounted = false;
+      if (keepAwakeActiveRef.current && !__DEV__) {
+        deactivateKeepAwake()
+          .catch(() => {
+            // Ignore cleanup errors
+          })
+          .finally(() => {
+            keepAwakeActiveRef.current = false;
+          });
+      }
+    };
   }, [currentScreen]);
 
   const handleStartGame = () => {
@@ -51,6 +119,10 @@ export default function HomeScreen() {
     setCurrentScreen("help");
   };
 
+  const handleShowPatchNotes = () => {
+    setCurrentScreen("patchnotes");
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
@@ -62,6 +134,7 @@ export default function HomeScreen() {
             onShowSettings={handleShowSettings}
             onShowLeaderboard={handleShowHelp}
             onHelp={handleShowHelp}
+            onPatchNotes={handleShowPatchNotes}
           />
         )}
 
@@ -84,6 +157,10 @@ export default function HomeScreen() {
         )}
 
         {currentScreen === "help" && <Help onBack={handleBackToMenu} />}
+
+        {currentScreen === "patchnotes" && (
+          <PatchNotes onBack={handleBackToMenu} />
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
