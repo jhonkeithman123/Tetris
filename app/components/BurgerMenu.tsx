@@ -1,10 +1,15 @@
+import * as FileSystem from "expo-file-system";
+import * as IntentLauncher from "expo-intent-launcher";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   Linking,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -23,6 +28,11 @@ interface GitHubRelease {
   body: string;
   html_url: string;
   published_at: string;
+  assets: Array<{
+    name: string;
+    browser_download_url: string;
+    size: number;
+  }>;
 }
 
 const BurgerMenu = ({
@@ -43,6 +53,8 @@ const BurgerMenu = ({
     useState<boolean>(false);
   const [updateCheckingVisible, setUpdateCheckingVisible] =
     useState<boolean>(false);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [updateInfo, setUpdateInfo] = useState<GitHubRelease | null>(null);
   const slideAnim = useRef(new Animated.Value(-250)).current;
 
@@ -104,22 +116,111 @@ const BurgerMenu = ({
     } catch (error) {
       console.error("Error checking for updates:", error);
       setUpdateCheckingVisible(false);
-      // Show error dialog to user
-      setUpToDateDialogVisible(true);
-      setUpdateInfo({
-        tag_name: CURRENT_VERSION,
-        name: "Error",
-        body: "Unable to check for updates. Please check your internet connection and try again.",
-        html_url: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
-        published_at: new Date().toISOString(),
-      });
+      Alert.alert(
+        "Error",
+        "Unable to check for updates. Please check your internet connection and try again."
+      );
     }
   };
 
-  const handleUpdatePress = () => {
-    if (updateInfo) {
-      Linking.openURL(updateInfo.html_url);
+  const downloadAndInstallUpdate = async () => {
+    if (!updateInfo || Platform.OS !== "android") {
+      Alert.alert("Error", "Updates are only available for Android.");
+      return;
     }
+
+    // Find APK asset
+    const apkAsset = updateInfo.assets.find(
+      (asset) => asset.name.endsWith(".apk") || asset.name.endsWith(".APK")
+    );
+
+    if (!apkAsset) {
+      Alert.alert(
+        "Error",
+        "No APK file found in the release. Please download from GitHub."
+      );
+      Linking.openURL(updateInfo.html_url);
+      return;
+    }
+
+    setUpdateDialogVisible(false);
+    setIsDownloading(true);
+    setDownloadProgress(0);
+
+    try {
+      // Use cacheDirectory which is available in all versions
+      const downloadUri = (FileSystem as any).cacheDirectory + apkAsset.name;
+
+      // Download with progress tracking
+      const downloadResumable = FileSystem.createDownloadResumable(
+        apkAsset.browser_download_url,
+        downloadUri,
+        {},
+        (downloadProgressEvent) => {
+          const progress =
+            downloadProgressEvent.totalBytesWritten /
+            downloadProgressEvent.totalBytesExpectedToWrite;
+          setDownloadProgress(progress * 100);
+        }
+      );
+
+      const result = await downloadResumable.downloadAsync();
+
+      if (result && result.uri) {
+        setIsDownloading(false);
+        setDownloadProgress(100);
+
+        // Install APK on Android
+        if (Platform.OS === "android") {
+          const fileUri = result.uri;
+
+          // Try to install APK
+          try {
+            await IntentLauncher.startActivityAsync(
+              "android.intent.action.VIEW",
+              {
+                data: fileUri,
+                flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+                type: "application/vnd.android.package-archive",
+              }
+            );
+          } catch (intentError) {
+            console.error("Intent error:", intentError);
+            // Fallback: open in browser
+            Alert.alert(
+              "Manual Installation Required",
+              "Please download and install the APK manually from GitHub.",
+              [
+                {
+                  text: "Open GitHub",
+                  onPress: () => Linking.openURL(updateInfo.html_url),
+                },
+                { text: "Cancel", style: "cancel" },
+              ]
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Download error:", error);
+      setIsDownloading(false);
+      Alert.alert(
+        "Download Failed",
+        "Failed to download the update. Please try downloading from GitHub.",
+        [
+          {
+            text: "Open GitHub",
+            onPress: () => updateInfo && Linking.openURL(updateInfo.html_url),
+          },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+    }
+  };
+
+  const cancelDownload = () => {
+    setIsDownloading(false);
+    setDownloadProgress(0);
   };
 
   return (
@@ -148,25 +249,67 @@ const BurgerMenu = ({
         </View>
       )}
 
-      {/* Update Available Dialog */}
-      <DialogBox
-        visible={updateDialogVisible && !!updateInfo}
-        title="Update Available"
-        message={`Version ${updateInfo?.tag_name || ""} is available!\n\n${
-          updateInfo?.body || ""
-        }`}
-        type="confirm"
-        confirmText="Update Now"
-        cancelText="Later"
-        onConfirm={handleUpdatePress}
-        onCancel={() => setUpdateDialogVisible(false)}
-      />
+      {/* Download Progress Dialog */}
+      {isDownloading && (
+        <View style={styles.updateCheckingOverlay}>
+          <View style={styles.downloadBox}>
+            <Text style={styles.downloadTitle}>Downloading Update</Text>
+            <View style={styles.progressBarContainer}>
+              <View
+                style={[styles.progressBar, { width: `${downloadProgress}%` }]}
+              />
+            </View>
+            <Text style={styles.progressText}>
+              {Math.round(downloadProgress)}%
+            </Text>
+            <Pressable style={styles.cancelButton} onPress={cancelDownload}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {/* Update Available Dialog - Custom Scrollable */}
+      {updateDialogVisible && updateInfo && (
+        <View style={styles.updateCheckingOverlay}>
+          <View style={styles.updateDialogBox}>
+            <Text style={styles.updateDialogTitle}>Update Available</Text>
+            <Text style={styles.updateVersion}>
+              Version {updateInfo.tag_name}
+            </Text>
+
+            <ScrollView
+              style={styles.updateScrollView}
+              showsVerticalScrollIndicator={true}
+            >
+              <Text style={styles.updateDescription}>
+                {updateInfo.body || "No description available."}
+              </Text>
+            </ScrollView>
+
+            <View style={styles.updateDialogButtons}>
+              <Pressable
+                style={[styles.updateButton, styles.updateButtonPrimary]}
+                onPress={downloadAndInstallUpdate}
+              >
+                <Text style={styles.updateButtonText}>Update Now</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.updateButton, styles.updateButtonSecondary]}
+                onPress={() => setUpdateDialogVisible(false)}
+              >
+                <Text style={styles.updateButtonTextSecondary}>Later</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Up to Date Dialog */}
       <DialogBox
         visible={upToDateDialogVisible}
         title="Up to Date"
-        message={`You're running the latest (${CURRENT_VERSION})!\n\nNo updates available at this time.`}
+        message={`You're running the latest version (${CURRENT_VERSION})!\n\nNo updates available at this time.`}
         type="alert"
         onConfirm={() => setUpToDateDialogVisible(false)}
       />
@@ -356,6 +499,112 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontSize: 16,
     fontWeight: "600",
+  },
+  updateDialogBox: {
+    backgroundColor: "#1a1a2e",
+    borderRadius: 12,
+    padding: 20,
+    width: "85%",
+    maxHeight: "80%",
+    borderWidth: 2,
+    borderColor: "#3498db",
+  },
+  updateDialogTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#3498db",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  updateVersion: {
+    fontSize: 18,
+    color: "#e67e22",
+    marginBottom: 15,
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  updateScrollView: {
+    maxHeight: 300,
+    marginBottom: 20,
+  },
+  updateDescription: {
+    fontSize: 14,
+    color: "#ffffff",
+    lineHeight: 22,
+  },
+  updateDialogButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  updateButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  updateButtonPrimary: {
+    backgroundColor: "#3498db",
+  },
+  updateButtonSecondary: {
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: "#3498db",
+  },
+  updateButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  updateButtonTextSecondary: {
+    color: "#3498db",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  downloadBox: {
+    backgroundColor: "#1a1a2e",
+    borderRadius: 12,
+    padding: 30,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#3498db",
+    width: "80%",
+  },
+  downloadTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#ffffff",
+    marginBottom: 20,
+  },
+  progressBarContainer: {
+    width: "100%",
+    height: 20,
+    backgroundColor: "#2c2c4e",
+    borderRadius: 10,
+    overflow: "hidden",
+    marginBottom: 15,
+  },
+  progressBar: {
+    height: "100%",
+    backgroundColor: "#3498db",
+    borderRadius: 10,
+  },
+  progressText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 20,
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    backgroundColor: "#e74c3c",
+    borderRadius: 8,
+  },
+  cancelButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
 
