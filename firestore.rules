@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Leaderboard collection
+    match /leaderboard/{userId} {
+      // Anyone (including unauthenticated guests) can view the global leaderboard
+      allow read: if true;
+      
+      // Only authenticated players can submit or update their own score
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // User profiles and friend codes
+    match /users/{userId} {
+      // Publicly readable so players can search by friendCode or name
+      allow read: if true;
+      
+      // Only authenticated user can edit their own profile
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Friend requests & friendships
+    match /friend_requests/{requestId} {
+      // Authenticated users can read/write requests where they are sender or receiver
+      allow read: if request.auth != null && (
+        resource == null ||
+        resource.data.senderUid == request.auth.uid ||
+        resource.data.receiverUid == request.auth.uid
+      );
+      
+      allow create: if request.auth != null && request.resource.data.senderUid == request.auth.uid;
+      
+      allow update, delete: if request.auth != null && (
+        resource.data.senderUid == request.auth.uid ||
+        resource.data.receiverUid == request.auth.uid
+      );
+    }
+  }
+}

@@ -1,7 +1,12 @@
-import DialogBox from "@/app/components/Dialog";
+import LineClearEffect from "./components/LineClearEffect";
+import PauseMenuModal from "./components/PauseMenuModal";
+import ditroyService, {
+  AdaptiveDifficultyState,
+} from "./services/ditroyService";
 import useSound from "@/app/hooks/useSound";
 import storeManager from "@/app/utils/storeManager";
-import React, { useEffect, useRef, useState } from "react";
+import leaderboardService from "@/app/services/leaderboardService";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   BackHandler,
@@ -24,6 +29,8 @@ import {
   clearLines,
   createEmptyBoard,
   createPiece,
+  findFullRows,
+  getStackHeight,
   hardDrop,
   mergePiece,
   movePiece,
@@ -63,12 +70,23 @@ export default function TetrisGame({
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [gameStarted, setGameStarted] = useState<boolean>(false);
 
-  // Button States
+  // Button & Modal States
   const [restartPressed, setRestartPressed] = useState<boolean>(false);
   const [menuPressed, setMenuPressed] = useState<boolean>(false);
-  const [backDialogVisible, setBackDialogVisible] = useState<boolean>(false);
-  // const [holdPressed, setHoldPressed] = useState<boolean>(false);
-  const [pausePressed, setPausePressed] = useState<boolean>(false);
+  const [pauseMenuVisible, setPauseMenuVisible] = useState<boolean>(false);
+
+  // Line Clear Animation State
+  const [clearingRows, setClearingRows] = useState<number[]>([]);
+  const [linesToClearCount, setLinesToClearCount] = useState<number>(0);
+  const isLineClearingRef = useRef<boolean>(false);
+
+  // DITroy Adaptive Online Difficulty & Timing State
+  const [adaptiveDifficulty, setAdaptiveDifficulty] = useState<AdaptiveDifficultyState>({
+    isOnline: false,
+    dropIntervalMs: 1000,
+    difficultyTier: "standard",
+    speedMultiplier: 1.0,
+  });
 
   // Game Board
   const [board, setBoard] = useState<BoardCell[][]>(createEmptyBoard());
@@ -82,7 +100,7 @@ export default function TetrisGame({
 
   // Game Logic States
   const [currentPiece, setCurrentPiece] = useState<Piece | null>(null);
-  const [nextPiece, setNextPiece] = useState<Piece | null>(null); // First nect piece
+  const [nextPiece, setNextPiece] = useState<Piece | null>(null); // First next piece
   const [nextNextPiece, setNextNextPiece] = useState<Piece | null>(null); // Second next piece
   const [heldPiece, setHeldPiece] = useState<Piece | null>(null);
   const [canHold, setCanHold] = useState<boolean>(true);
@@ -96,6 +114,13 @@ export default function TetrisGame({
   const boardRef = useRef<BoardCell[][]>(createEmptyBoard());
   const isPausedRef = useRef<boolean>(false);
   const gameOverRef = useRef<boolean>(false);
+  const rotationRef = useRef<number>(0);
+  const canHoldRef = useRef<boolean>(true);
+  const heldPieceRef = useRef<Piece | null>(null);
+  const nextPieceRef = useRef<Piece | null>(null);
+  const nextNextPieceRef = useRef<Piece | null>(null);
+  const isDropAnimatingRef = useRef<boolean>(false);
+  const lastMoveSoundRef = useRef<number>(0);
 
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
@@ -106,9 +131,20 @@ export default function TetrisGame({
       .padStart(2, "0")}`;
   };
 
-  // Load high score on component mount
+  // Load high score and DITroy online status on component mount
   useEffect(() => {
     loadHighScore();
+    ditroyService.checkOnlineStatus().then(() => {
+      const initial = ditroyService.calculateAdaptiveDropInterval({
+        score: 0,
+        level: 1,
+        lines: 0,
+        combo: 0,
+        stackHeight: 0,
+        timeElapsed: 0,
+      });
+      setAdaptiveDifficulty(initial);
+    });
   }, []);
 
   const loadHighScore = async () => {
@@ -116,7 +152,7 @@ export default function TetrisGame({
     setHighScore(savedHighScore);
   };
 
-  // Check and update high score
+  // Check and update high score (local & cloud if authenticated)
   const checkAndUpdateHighScore = async () => {
     if (score > highScore) {
       await storeManager.updateGameStats(score, lines, level);
@@ -125,6 +161,11 @@ export default function TetrisGame({
     } else {
       // Still update stats even if not a high score
       await storeManager.updateGameStats(score, lines, level);
+    }
+
+    // Submit to cloud leaderboard ONLY if authenticated (local accounts do not upload)
+    if (score > 0) {
+      await leaderboardService.submitScoreIfAuthenticated(score, lines, level);
     }
   };
 
@@ -185,6 +226,30 @@ export default function TetrisGame({
     gameOverRef.current = gameOver;
   }, [gameOver]);
 
+  useEffect(() => {
+    rotationRef.current = rotation;
+  }, [rotation]);
+
+  useEffect(() => {
+    canHoldRef.current = canHold;
+  }, [canHold]);
+
+  useEffect(() => {
+    heldPieceRef.current = heldPiece;
+  }, [heldPiece]);
+
+  useEffect(() => {
+    nextPieceRef.current = nextPiece;
+  }, [nextPiece]);
+
+  useEffect(() => {
+    nextNextPieceRef.current = nextNextPiece;
+  }, [nextNextPiece]);
+
+  useEffect(() => {
+    isDropAnimatingRef.current = isDropAnimating;
+  }, [isDropAnimating]);
+
   // Clear combo timer on unmount or game over
   useEffect(() => {
     return () => {
@@ -206,59 +271,93 @@ export default function TetrisGame({
     }
   }, [isPaused, gameOver, gameStarted]);
 
+  // Process piece lock and trigger artistic line elimination
+  const processPieceLock = (pieceToLock: Piece, targetBoard: BoardCell[][]) => {
+    const mergedBoard = mergePiece(pieceToLock, targetBoard);
+    const fullRows = findFullRows(mergedBoard);
+
+    if (fullRows.length > 0) {
+      // Freeze controls & drops during elimination animation
+      isLineClearingRef.current = true;
+      setCurrentPiece(null);
+      setBoard(mergedBoard);
+      setClearingRows(fullRows);
+      setLinesToClearCount(fullRows.length);
+      soundHook.playEffect("disappear");
+
+      // Dynamic AI coach commentary on notable events
+      ditroyService.requestEventCommentary(
+        fullRows.length >= 4 ? "tetris" : "high_combo",
+        {
+          score,
+          level,
+          lines: lines + fullRows.length,
+          combo: combo + 1,
+          stackHeight: getStackHeight(mergedBoard),
+          timeElapsed: time,
+        }
+      );
+    } else {
+      soundHook.playEffect("drop");
+      setBoard(mergedBoard);
+      setCurrentPiece(null);
+
+      // Reset combo if no lines cleared
+      if (comboTimerRef.current) {
+        clearTimeout(comboTimerRef.current);
+        comboTimerRef.current = null;
+      }
+      setCombo(0);
+
+      spawnNewPiece();
+    }
+  };
+
+  // Called when LineClearEffect finishes its artistic flash & sweep animation
+  const handleLineClearAnimationComplete = () => {
+    const { newBoard, linesCleared } = clearLines(boardRef.current);
+    setBoard(newBoard);
+    setClearingRows([]);
+    isLineClearingRef.current = false;
+
+    if (linesCleared > 0) {
+      const newCombo = Math.min(combo + 1, 7);
+      setCombo(newCombo);
+
+      const baseScore = calculateScore(linesCleared, level);
+      const comboBonus = calculateComboBonus(newCombo);
+      const totalScore = baseScore + comboBonus;
+
+      setLines((prev) => prev + linesCleared);
+      setScore((prev) => prev + totalScore);
+
+      resetComboTimer();
+
+      if (newCombo === 1) soundHook.playCombo("combo1");
+      else if (newCombo === 2) soundHook.playCombo("combo2");
+      else if (newCombo === 3) soundHook.playCombo("combo3");
+      else if (newCombo === 4) soundHook.playCombo("combo4");
+      else if (newCombo === 5) soundHook.playCombo("combo5");
+      else if (newCombo === 6) soundHook.playCombo("combo6");
+      else if (newCombo === 7) soundHook.playCombo("combo7");
+    }
+
+    spawnNewPiece();
+  };
+
   // Move piece down (for automatic drops only)
   const moveDown = () => {
     const piece = currentPieceRef.current;
     const currentBoard = boardRef.current;
 
-    if (!piece || isPausedRef.current || gameOverRef.current) return;
+    if (!piece || isPausedRef.current || gameOverRef.current || isLineClearingRef.current) return;
 
     const movedPiece = movePiece(piece, currentBoard, "down");
 
     if (movedPiece) {
       setCurrentPiece(movedPiece);
     } else {
-      // Merge and spawn new piece
-      soundHook.playEffect("hard_drop");
-      const mergedBoard = mergePiece(piece, currentBoard);
-      const { newBoard, linesCleared } = clearLines(mergedBoard);
-
-      setBoard(newBoard);
-
-      if (linesCleared > 0) {
-        // Increment combo
-        const newCombo = Math.min(combo + 1, 7);
-        setCombo(newCombo);
-
-        // Calculate score with combo bonus
-        const baseScore = calculateScore(linesCleared, level);
-        const comboBonus = calculateComboBonus(newCombo);
-        const totalScore = baseScore + comboBonus;
-
-        setLines((prev) => prev + linesCleared);
-        setScore((prev) => prev + totalScore);
-
-        // Reset combo timer
-        resetComboTimer();
-
-        // Play combo sounds based on combo count
-        if (newCombo === 1) soundHook.playCombo("combo1");
-        else if (newCombo === 2) soundHook.playCombo("combo2");
-        else if (newCombo === 3) soundHook.playCombo("combo3");
-        else if (newCombo === 4) soundHook.playCombo("combo4");
-        else if (newCombo === 5) soundHook.playCombo("combo5");
-        else if (newCombo === 6) soundHook.playCombo("combo6");
-        else if (newCombo === 7) soundHook.playCombo("combo7");
-      } else {
-        // Clear combo timer if no lines cleared
-        if (comboTimerRef.current) {
-          clearTimeout(comboTimerRef.current);
-          comboTimerRef.current = null;
-        }
-        setCombo(0);
-      }
-
-      spawnNewPiece();
+      processPieceLock(piece, currentBoard);
     }
   };
 
@@ -283,9 +382,9 @@ export default function TetrisGame({
       return;
     }
 
-    setCurrentPiece(piece); // Current piece
-    setNextPiece(nextNextPiece || createPiece()); // Use second nex piece
-    setNextNextPiece(createPiece()); // Generate new second next piece
+    setCurrentPiece(piece);
+    setNextPiece(nextNextPiece || createPiece());
+    setNextNextPiece(createPiece());
     setRotation(0);
     setCanHold(true);
     lastDropTimeRef.current = Date.now();
@@ -304,15 +403,17 @@ export default function TetrisGame({
     setHeldPiece(null);
     setCanHold(true);
     setIsNewHighScore(false);
+    setClearingRows([]);
+    isLineClearingRef.current = false;
 
     if (comboTimerRef.current) {
       clearTimeout(comboTimerRef.current);
       comboTimerRef.current = null;
     }
 
-    const firstPiece = createPiece(); // Current piece
-    const second = createPiece(); // Next piece
-    const third = createPiece(); // Second Next piece
+    const firstPiece = createPiece();
+    const second = createPiece();
+    const third = createPiece();
 
     setCurrentPiece(firstPiece);
     setNextPiece(second);
@@ -321,10 +422,21 @@ export default function TetrisGame({
     lastDropTimeRef.current = Date.now();
   };
 
-  // Game loop
+  // Game loop with DITroy Adaptive Timing
   useEffect(() => {
-    if (gameStarted && !gameOver && !isPaused) {
-      const interval = Math.max(100, 1000 - (level - 1) * 100);
+    if (gameStarted && !gameOver && !isPaused && !isLineClearingRef.current) {
+      const stackH = getStackHeight(boardRef.current);
+      const adaptive = ditroyService.calculateAdaptiveDropInterval({
+        score,
+        level,
+        lines,
+        combo,
+        stackHeight: stackH,
+        timeElapsed: time,
+      });
+      setAdaptiveDifficulty(adaptive);
+
+      const interval = adaptive.dropIntervalMs;
 
       gameLoopRef.current = setInterval(() => {
         const now = Date.now();
@@ -332,7 +444,7 @@ export default function TetrisGame({
           moveDown();
           lastDropTimeRef.current = now;
         }
-      }, 50);
+      }, 40);
     }
 
     return () => {
@@ -340,7 +452,7 @@ export default function TetrisGame({
         clearInterval(gameLoopRef.current);
       }
     };
-  }, [gameStarted, gameOver, isPaused, level]);
+  }, [gameStarted, gameOver, isPaused, level, lines, combo, time]);
 
   // Play game music when game starts
   useEffect(() => {
@@ -365,30 +477,33 @@ export default function TetrisGame({
     startGame();
   }, []);
 
-  // Back to menu loop
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      () => {
-        setBackDialogVisible(true);
-        return true;
-      }
-    );
-
-    return () => backHandler.remove();
-  }, []);
-
-  const handlePauseToggle = () => {
-    if (isPaused) {
-      soundHook.resumeMusic();
-    } else {
-      soundHook.pauseMusic();
+  // Back to menu / Pause combined handlers
+  const handleOpenPauseMenu = () => {
+    if (gameOver) {
+      handleQuitToMenu();
+      return;
     }
-    setIsPaused(!isPaused);
+    setIsPaused(true);
+    isPausedRef.current = true;
+    soundHook.pauseMusic();
+    setPauseMenuVisible(true);
   };
 
-  const handleBackToMenu = () => {
-    setBackDialogVisible(false);
+  const handleResume = () => {
+    setIsPaused(false);
+    isPausedRef.current = false;
+    soundHook.resumeMusic();
+    setPauseMenuVisible(false);
+  };
+
+  const handleRestartGame = () => {
+    setPauseMenuVisible(false);
+    soundHook.playEffect("spawn");
+    startGame();
+  };
+
+  const handleQuitToMenu = () => {
+    setPauseMenuVisible(false);
     if (gameLoopRef.current) {
       clearInterval(gameLoopRef.current);
     }
@@ -398,172 +513,195 @@ export default function TetrisGame({
     if (comboTimerRef.current) {
       clearTimeout(comboTimerRef.current);
     }
+    soundHook.stopMusic();
     onBackToMenu();
   };
 
+  // Hardware Back button triggers Pause Menu
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        handleOpenPauseMenu();
+        return true;
+      }
+    );
+
+    return () => backHandler.remove();
+  }, []);
+
   // Hold piece handler
-  const handleHold = () => {
-    if (!currentPiece || !canHold || isPaused || gameOver) return;
+  // Throttled sound effect to prevent native audio bridge bottlenecks
+  const playMoveSound = useCallback(() => {
+    const now = Date.now();
+    if (now - lastMoveSoundRef.current > 70) {
+      lastMoveSoundRef.current = now;
+      soundHook.playEffect("move");
+    }
+  }, [soundHook]);
+
+  // Hold piece handler (memoized for low latency)
+  const handleHold = useCallback(() => {
+    if (
+      !currentPieceRef.current ||
+      !canHoldRef.current ||
+      isPausedRef.current ||
+      gameOverRef.current ||
+      isLineClearingRef.current
+    )
+      return;
 
     soundHook.playEffect("swap");
 
-    if (heldPiece) {
+    const piece = currentPieceRef.current;
+    const held = heldPieceRef.current;
+
+    if (held) {
       const temp = {
-        ...currentPiece,
+        ...piece,
         x: Math.floor(BOARD_WIDTH / 2) - 1,
         y: 0,
       };
       const swapped = {
-        ...heldPiece,
+        ...held,
         x: Math.floor(BOARD_WIDTH / 2) - 1,
         y: 0,
       };
 
       setHeldPiece(temp);
       setCurrentPiece(swapped);
+      currentPieceRef.current = swapped;
       setRotation(0);
+      rotationRef.current = 0;
     } else {
       setHeldPiece({
-        ...currentPiece,
+        ...piece,
         x: Math.floor(BOARD_WIDTH / 2) - 1,
         y: 0,
       });
-      const piece = nextPiece || createPiece();
-      setCurrentPiece(piece);
-      setNextPiece(nextNextPiece || createPiece());
+      const nextP = nextPieceRef.current || createPiece();
+      setCurrentPiece(nextP);
+      currentPieceRef.current = nextP;
+      setNextPiece(nextNextPieceRef.current || createPiece());
       setNextNextPiece(createPiece());
       setRotation(0);
+      rotationRef.current = 0;
     }
 
     setCanHold(false);
-  };
+    canHoldRef.current = false;
+  }, [soundHook]);
 
-  // Control handlers
-  const handleRotate = () => {
-    if (isPaused || gameOver) return;
+  // Control handlers (memoized with stable identities to prevent re-renders)
+  const handleRotate = useCallback(() => {
+    if (isPausedRef.current || gameOverRef.current || isLineClearingRef.current) return;
 
     setCurrentPiece((prev) => {
       if (!prev) return prev;
-      const result = rotatePiece(prev, rotation, boardRef.current);
+      const result = rotatePiece(prev, rotationRef.current, boardRef.current);
       if (result) {
-        soundHook.playEffect("rotate");
+        rotationRef.current = result.rotation;
         setRotation(result.rotation);
+        currentPieceRef.current = result.piece;
+        soundHook.playEffect("rotate");
         return result.piece;
       }
       return prev;
     });
-  };
+  }, [soundHook]);
 
-  const handleMoveLeft = () => {
-    if (isPaused || gameOver) return;
+  const handleMoveLeft = useCallback(() => {
+    if (isPausedRef.current || gameOverRef.current || isLineClearingRef.current) return;
 
     setCurrentPiece((prev) => {
       if (!prev) return prev;
       const movedPiece = movePiece(prev, boardRef.current, "left");
       if (movedPiece) {
-        soundHook.playEffect("move");
+        currentPieceRef.current = movedPiece;
+        playMoveSound();
         return movedPiece;
       }
       return prev;
     });
-  };
+  }, [playMoveSound]);
 
-  const handleMoveDown = () => {
-    if (isPaused || gameOver) return;
+  const handleMoveDown = useCallback(() => {
+    if (isPausedRef.current || gameOverRef.current || isLineClearingRef.current) return;
 
     setCurrentPiece((prev) => {
       if (!prev) return prev;
       const movedPiece = movePiece(prev, boardRef.current, "down");
       if (movedPiece) {
-        soundHook.playEffect("move");
+        currentPieceRef.current = movedPiece;
+        playMoveSound();
         return movedPiece;
       }
       return prev;
     });
-  };
+  }, [playMoveSound]);
 
-  const handleMoveRight = () => {
-    if (isPaused || gameOver) return;
+  const handleMoveRight = useCallback(() => {
+    if (isPausedRef.current || gameOverRef.current || isLineClearingRef.current) return;
 
     setCurrentPiece((prev) => {
       if (!prev) return prev;
       const movedPiece = movePiece(prev, boardRef.current, "right");
       if (movedPiece) {
-        soundHook.playEffect("move");
+        currentPieceRef.current = movedPiece;
+        playMoveSound();
         return movedPiece;
       }
       return prev;
     });
-  };
+  }, [playMoveSound]);
 
-  const handleHardDrop = () => {
-    if (!currentPiece || isPaused || gameOver || isDropAnimating) return;
+  const handleHardDrop = useCallback(() => {
+    const piece = currentPieceRef.current;
+    if (
+      !piece ||
+      isPausedRef.current ||
+      gameOverRef.current ||
+      isDropAnimatingRef.current ||
+      isLineClearingRef.current
+    )
+      return;
 
-    const droppedPiece = hardDrop(currentPiece, board);
-    const dropDistance = droppedPiece.y - currentPiece.y;
+    const currentBoard = boardRef.current;
+    const droppedPiece = hardDrop(piece, currentBoard);
+    const dropDistance = droppedPiece.y - piece.y;
 
-    if (dropDistance === 0) return; // Already at the bottom
+    if (dropDistance === 0) {
+      processPieceLock(piece, currentBoard);
+      return;
+    }
 
-    setDropStartY(currentPiece.y);
+    setDropStartY(piece.y);
     setDropEndY(droppedPiece.y);
     setIsDropAnimating(true);
+    isDropAnimatingRef.current = true;
     soundHook.playEffect("hard_drop");
 
     // Animate drop
     dropAnimation.setValue(0);
     trailOpacity.setValue(1);
 
-    // Animate the drop with trail
     Animated.parallel([
       Animated.timing(dropAnimation, {
         toValue: 1,
-        duration: Math.min(250, dropDistance * 25),
+        duration: Math.min(220, dropDistance * 20),
         useNativeDriver: true,
       }),
       Animated.timing(trailOpacity, {
         toValue: 0,
-        duration: Math.min(350, dropDistance * 35),
+        duration: Math.min(300, dropDistance * 30),
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // After animation completes, merge the piece
-      const mergedBoard = mergePiece(droppedPiece, board);
-      const { newBoard, linesCleared } = clearLines(mergedBoard);
-      setBoard(newBoard);
-      setCurrentPiece(null);
       setIsDropAnimating(false);
-
-      if (linesCleared > 0) {
-        const newCombo = Math.min(combo + 1, 7);
-        setCombo(newCombo);
-
-        const baseScore = calculateScore(linesCleared, level);
-        const comboBonus = calculateComboBonus(newCombo);
-        const totalScore = baseScore + comboBonus;
-
-        setLines((prev) => prev + linesCleared);
-        setScore((prev) => prev + totalScore);
-
-        resetComboTimer();
-
-        if (newCombo === 1) soundHook.playCombo("combo1");
-        else if (newCombo === 2) soundHook.playCombo("combo2");
-        else if (newCombo === 3) soundHook.playCombo("combo3");
-        else if (newCombo === 4) soundHook.playCombo("combo4");
-        else if (newCombo === 5) soundHook.playCombo("combo5");
-        else if (newCombo === 6) soundHook.playCombo("combo6");
-        else if (newCombo === 7) soundHook.playCombo("combo7");
-      } else {
-        if (comboTimerRef.current) {
-          clearTimeout(comboTimerRef.current);
-          comboTimerRef.current = null;
-        }
-        setCombo(0);
-      }
-
-      spawnNewPiece();
+      isDropAnimatingRef.current = false;
+      processPieceLock(droppedPiece, boardRef.current);
     });
-  };
+  }, [soundHook]);
 
   const handleRestart = () => {
     soundHook.playEffect("spawn");
@@ -572,20 +710,28 @@ export default function TetrisGame({
 
   return (
     <View style={styles.container}>
-      <DialogBox
-        visible={backDialogVisible}
-        title="Return to Menu"
-        message="Are you sure you want to go back to the menu? Your progress will be lost."
-        type="confirm"
-        confirmText="Yes"
-        cancelText="No"
-        onConfirm={handleBackToMenu}
-        onCancel={() => setBackDialogVisible(false)}
+      <PauseMenuModal
+        visible={pauseMenuVisible}
+        score={score}
+        level={level}
+        lines={lines}
+        isOnline={adaptiveDifficulty.isOnline}
+        difficultyTier={adaptiveDifficulty.difficultyTier}
+        musicEnabled={soundHook.musicEnabled}
+        sfxEnabled={soundHook.sfxEnabled}
+        onToggleMusic={soundHook.setMusicEnabled}
+        onToggleSfx={soundHook.setSfxEnabled}
+        onResume={handleResume}
+        onRestart={handleRestartGame}
+        onQuitToMenu={handleQuitToMenu}
       />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        canCancelContentTouches={false}
+        keyboardShouldPersistTaps="always"
+        bounces={false}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -652,11 +798,11 @@ export default function TetrisGame({
               )}
             </View>
 
-            {/* Menu Button */}
+            {/* Menu Button - Triggers Unified Pause Menu */}
             <Pressable
               onPressIn={() => setMenuPressed(true)}
               onPressOut={() => setMenuPressed(false)}
-              onPress={() => setBackDialogVisible(true)}
+              onPress={handleOpenPauseMenu}
             >
               <Image
                 source={
@@ -677,6 +823,16 @@ export default function TetrisGame({
               cellSize={CELL_SIZE}
               boardWidth={BOARD_WIDTH}
               boardHeight={BOARD_HEIGHT}
+            />
+
+            {/* Artistic Line Elimination Animation */}
+            <LineClearEffect
+              clearingRows={clearingRows}
+              cellSize={CELL_SIZE}
+              boardWidth={BOARD_WIDTH}
+              linesCount={linesToClearCount}
+              comboCount={combo}
+              onAnimationEnd={handleLineClearAnimationComplete}
             />
 
             {/* Motion blur trail effect during hard drop */}
@@ -800,6 +956,16 @@ export default function TetrisGame({
                     resizeMode="contain"
                   />
                 </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.gameOverMenuButton,
+                    pressed && styles.gameOverMenuButtonPressed,
+                  ]}
+                  onPress={handleQuitToMenu}
+                >
+                  <Text style={styles.gameOverMenuButtonText}>MAIN MENU</Text>
+                </Pressable>
               </View>
             )}
 
@@ -887,18 +1053,6 @@ export default function TetrisGame({
                 <Text style={styles.highScoreValue}>{highScore}</Text>
               </View>
             )}
-
-            <Pressable
-              style={[
-                styles.pauseButton,
-                pausePressed && styles.pauseButtonPressed,
-              ]}
-              onPressIn={() => setPausePressed(true)}
-              onPressOut={() => setPausePressed(false)}
-              onPress={handlePauseToggle}
-            >
-              <Text style={styles.pauseButtonText}>{isPaused ? "▶" : "⏸"}</Text>
-            </Pressable>
           </View>
         </View>
 
@@ -1076,6 +1230,30 @@ const styles = StyleSheet.create({
     width: 180,
     height: 50,
   },
+  gameOverMenuButton: {
+    marginTop: 12,
+    backgroundColor: "rgba(26, 26, 46, 0.95)",
+    borderWidth: 1.5,
+    borderColor: "#3498db",
+    paddingVertical: 10,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    shadowColor: "#3498db",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  gameOverMenuButtonPressed: {
+    backgroundColor: "#3498db",
+    opacity: 0.9,
+  },
+  gameOverMenuButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "bold",
+    letterSpacing: 1.5,
+  },
   rightPanel: {
     gap: 8,
   },
@@ -1189,19 +1367,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#ffffff",
     fontWeight: "bold",
-  },
-  pauseButton: {
-    backgroundColor: "#e67e22",
-    padding: 12,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-  pauseButtonPressed: {
-    backgroundColor: "#d35400",
-    transform: [{ scale: 0.95 }],
-  },
-  pauseButtonText: {
-    fontSize: 20,
-    color: "#ffffff",
   },
 });

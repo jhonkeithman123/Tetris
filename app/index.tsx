@@ -1,5 +1,6 @@
 import Help from "@/app/Help";
 import useSound from "@/app/hooks/useSound";
+import Leaderboard from "@/app/Leaderboard";
 import PatchNotes from "@/app/PatchNotes";
 import Settings from "@/app/Settings";
 import Menu from "@/game/menu";
@@ -9,7 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { StatusBar, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
-type Screen = "menu" | "game" | "settings" | "help" | "patchnotes";
+type Screen = "menu" | "game" | "settings" | "help" | "patchnotes" | "leaderboard";
 
 export default function HomeScreen() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("menu");
@@ -52,7 +53,7 @@ export default function HomeScreen() {
         // Activate keep awake
         if (!keepAwakeActiveRef.current) {
           try {
-            await activateKeepAwakeAsync();
+            await activateKeepAwakeAsync().catch(() => {});
             if (isMounted) {
               keepAwakeActiveRef.current = true;
             }
@@ -67,7 +68,7 @@ export default function HomeScreen() {
         // Deactivate keep awake
         if (keepAwakeActiveRef.current) {
           try {
-            await deactivateKeepAwake();
+            await deactivateKeepAwake().catch(() => {});
             if (isMounted) {
               keepAwakeActiveRef.current = false;
             }
@@ -82,21 +83,20 @@ export default function HomeScreen() {
     };
 
     // Call the function and suppress any unhandled rejections
-    handleKeepAwake().catch((error) => {
-      // Suppress all keep-awake errors
-      console.log("Keep awake error suppressed:", error.message);
-    });
+    handleKeepAwake().catch(() => {});
 
     return () => {
       isMounted = false;
       if (keepAwakeActiveRef.current && !__DEV__) {
-        deactivateKeepAwake()
-          .catch(() => {
-            // Ignore cleanup errors
-          })
-          .finally(() => {
-            keepAwakeActiveRef.current = false;
-          });
+        try {
+          deactivateKeepAwake()
+            .catch(() => {})
+            .finally(() => {
+              keepAwakeActiveRef.current = false;
+            });
+        } catch {
+          keepAwakeActiveRef.current = false;
+        }
       }
     };
   }, [currentScreen]);
@@ -123,6 +123,10 @@ export default function HomeScreen() {
     setCurrentScreen("patchnotes");
   };
 
+  const handleShowLeaderboard = () => {
+    setCurrentScreen("leaderboard");
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
@@ -132,7 +136,7 @@ export default function HomeScreen() {
           <Menu
             onStartGame={handleStartGame}
             onShowSettings={handleShowSettings}
-            onShowLeaderboard={handleShowHelp}
+            onShowLeaderboard={handleShowLeaderboard}
             onHelp={handleShowHelp}
             onPatchNotes={handleShowPatchNotes}
           />
@@ -160,6 +164,10 @@ export default function HomeScreen() {
 
         {currentScreen === "patchnotes" && (
           <PatchNotes onBack={handleBackToMenu} />
+        )}
+
+        {currentScreen === "leaderboard" && (
+          <Leaderboard onBack={handleBackToMenu} />
         )}
       </SafeAreaView>
     </SafeAreaProvider>

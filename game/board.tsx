@@ -10,7 +10,7 @@ interface BoardProps {
   boardHeight: number;
 }
 
-export default function Board({
+function Board({
   board,
   cellSize,
   boardWidth,
@@ -44,6 +44,8 @@ export default function Board({
     </View>
   );
 }
+
+export default React.memo(Board);
 
 const styles = StyleSheet.create({
   borderContainer: {

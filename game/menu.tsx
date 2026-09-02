@@ -1,11 +1,15 @@
+import AuthModal from "@/app/components/AuthModal";
 import BurgerMenu from "@/app/components/BurgerMenu";
 import DialogBox from "@/app/components/Dialog";
+import FriendsModal from "@/app/components/FriendsModal";
+import authService from "@/app/services/authService";
 import {
   BlockColor,
   getBlockAsset,
   getRandomBlockColor,
 } from "@/app/utils/blockAssets";
 import { useFonts } from "expo-font";
+import { User } from "firebase/auth";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -15,6 +19,7 @@ import {
   Image,
   Pressable,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 
@@ -171,10 +176,20 @@ export default function Menu({
   const [settingsPressed, setSettingsPressed] = useState<boolean>(false);
   const [dialogVisible, setDialogVisible] = useState<boolean>(false);
   const [quitDialogVisible, setQuitDialogVisible] = useState<boolean>(false);
-  const [leaderboardDialogVisible, setLeaderboardDialogVisible] =
-    useState<boolean>(false);
+  const [authModalVisible, setAuthModalVisible] = useState<boolean>(false);
+  const [friendsModalVisible, setFriendsModalVisible] = useState<boolean>(false);
   const [accountDialogVisible, setAccountDialogVisible] =
     useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(
+    authService.getCurrentUser()
+  );
+
+  useEffect(() => {
+    const unsubscribe = authService.subscribeToAuthState((user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [fontsLoaded] = useFonts({
     Tetris: require("@/assets/font/Tetris.ttf"),
@@ -207,11 +222,22 @@ export default function Menu({
   };
 
   const handleLeaderboard = () => {
-    setLeaderboardDialogVisible(true);
+    if (onShowLeaderboard) {
+      onShowLeaderboard();
+    }
   };
 
   const handleAccount = () => {
-    setAccountDialogVisible(true);
+    if (currentUser) {
+      setAccountDialogVisible(true);
+    } else {
+      setAuthModalVisible(true);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setAccountDialogVisible(false);
+    await authService.signOut();
   };
 
   const handlePatchNotes = () => {
@@ -225,11 +251,34 @@ export default function Menu({
       <GridBackground />
       <AnimatedBackground />
 
+      {/* Top Right Account Status Pill */}
+      <Pressable style={styles.accountPill} onPress={handleAccount}>
+        <View style={currentUser ? styles.onlineDot : styles.offlineDot} />
+        <Text style={styles.accountPillText} numberOfLines={1}>
+          {currentUser
+            ? currentUser.displayName || currentUser.email?.split("@")[0] || "Player"
+            : "Guest (Sign In)"}
+        </Text>
+      </Pressable>
+
       <BurgerMenu
         onExit={() => setQuitDialogVisible(true)}
         onHelp={handleHelp}
         onAccount={handleAccount}
+        onFriends={() => setFriendsModalVisible(true)}
         onPatchNotes={handlePatchNotes}
+      />
+
+      <AuthModal
+        visible={authModalVisible}
+        onClose={() => setAuthModalVisible(false)}
+        onSuccess={() => setAuthModalVisible(false)}
+      />
+
+      <FriendsModal
+        visible={friendsModalVisible}
+        onClose={() => setFriendsModalVisible(false)}
+        onOpenAuth={() => setAuthModalVisible(true)}
       />
 
       {/* Welcome Dialog */}
@@ -253,22 +302,18 @@ export default function Menu({
         onCancel={() => setQuitDialogVisible(false)}
       />
 
-      {/* Leaderboard Coming Soon Dialog */}
-      <DialogBox
-        visible={leaderboardDialogVisible}
-        title="Coming Soon"
-        message="Leaderboard feature is not implemented yet. Stay tuned for future updates!"
-        type="alert"
-        onConfirm={() => setLeaderboardDialogVisible(false)}
-      />
-
-      {/* Account Coming Soon Dialog */}
+      {/* Account Info / Sign Out Dialog */}
       <DialogBox
         visible={accountDialogVisible}
-        title="Coming Soon"
-        message="Account feature is not implemented yet. Stay tuned for future updates!"
-        type="alert"
-        onConfirm={() => setAccountDialogVisible(false)}
+        title="Player Profile"
+        message={`Logged in as: ${
+          currentUser?.displayName || currentUser?.email || "Player"
+        }\n\nScores automatically sync to Global Leaderboard.\n\nWould you like to sign out?`}
+        type="confirm"
+        confirmText="Sign Out"
+        cancelText="Close"
+        onConfirm={handleSignOut}
+        onCancel={() => setAccountDialogVisible(false)}
       />
 
       <View style={styles.logoContainer}>
@@ -403,5 +448,40 @@ const styles = StyleSheet.create({
     width: 230,
     height: 60,
     marginVertical: 10,
+  },
+  accountPill: {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(20, 20, 36, 0.85)",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#3498db",
+    zIndex: 10,
+    elevation: 6,
+  },
+  accountPillText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "bold",
+    maxWidth: 120,
+  },
+  onlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#2ecc71",
+    marginRight: 6,
+  },
+  offlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#f39c12",
+    marginRight: 6,
   },
 });

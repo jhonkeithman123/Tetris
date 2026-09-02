@@ -16,7 +16,29 @@ interface PatchNotesProps {
 const CHANGELOG = `
 # Tetris Game - Change Log
 
-## [${CURRENT_VERSION}] - 2026-01-04
+## [${CURRENT_VERSION}] - 2026-09-02
+
+### 🔐 Player Authentication System
+- Email & Password sign in, registration, and recovery
+- Native Google Sign-In with official multi-color logo
+- Guest play support with offline-only scoring
+
+### 🏆 Cloud Global Leaderboard
+- Real-time Firestore sync & top 50 player rankings
+- Retro podium display with #1 Gold, #2 Silver, #3 Bronze
+- In-memory tie-breakers and fast responsive loading
+
+### 👥 Arcade Friend System & Rivals
+- Memorable Friend Codes (e.g. TR-84B91F) with 1-tap copy
+- Friends-Only Leaderboard tab filter
+- 4-Tier Recommended Rivals (50% Nearby, 35% Rivals, 10% Masters, 5% Rising)
+
+### 🎮 Gameplay Improvements
+- Game Over Main Menu button & hardware back navigation
+- Enhanced screen wake lock stability
+- Full offline-first design
+
+## [1.1.0] - 2026-01-04
 
 ### Visual Enhancements
 

@@ -49,3 +49,7 @@ export function getBlockAsset(color: BlockColor) {
 export function getRandomBlockColor(): BlockColor {
   return BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
 }
+
+export default function RouteFallback() {
+  return null;
+}

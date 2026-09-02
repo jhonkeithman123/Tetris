@@ -1,5 +1,38 @@
 # Tetris Game - Change Log
 
+## [2.0.0] - 2026-09-02
+
+### 🔐 Major Feature: Player Authentication System
+- **Email & Password Authentication**: Full in-app registration, secure sign-in, and password reset workflows.
+- **Native Google Sign-In**: One-tap sign in with official 4-color Google "G" logo and native Android bottom sheet support.
+- **Offline Guest Protection**: Local guest play is fully supported; guest high scores remain safely on device without cloud pollution.
+- **Account Pill & Dialog**: Top-right live status pill showing active player name, online status dot, and account management dialog.
+
+### 🏆 Major Feature: Cloud Global Leaderboard
+- **Live Cloud Leaderboard**: Real-time rankings synced across all devices via Firebase Cloud Firestore.
+- **Podium Display**: Retro arcade podium honoring #1 Gold (👑🥇), #2 Silver (🥈), and #3 Bronze (🥉).
+- **Automated Rank Sync**: Personal best scores, lines cleared, and levels automatically save to cloud for signed-in players upon game over.
+- **Guest Access**: Guest players can view the entire global leaderboard with zero restrictions.
+
+### 👥 Major Feature: Arcade Friend System
+- **Arcade Friend Codes**: Every player receives a unique, memorable Friend Code (e.g. `TR-84B91F`) with 1-tap copy.
+- **Search & Add**: Look up any player across the globe by their Friend Code.
+- **Real-Time Requests**: Incoming friend requests tab with instant Accept (✓) and Decline (✕) buttons.
+- **Friends-Only Leaderboard Filter**: Toggle between `[🌐 GLOBAL]` and `[👥 FRIENDS]` on the Leaderboard to compete directly against your friends!
+- **Burger Menu Integration**: Direct "👥 Friends" access from the slide-out menu on the title screen.
+
+### 🎯 Major Feature: Multi-Tier Recommendation Engine
+- **50% Related & Nearby Players**: Future-proof stepping stone architecture detecting location proximity and family/contact connections.
+- **35% Close Skill Rivals**: Finds players with high scores within competitive striking distance of yours.
+- **10% Pro Masters**: Highlights inspirational top players with scores several times higher (2x to 22x) than yours.
+- **5% Rising Players**: Suggests players with lower high scores (`<= 0.75x`) to mentor or compete with.
+- **Dynamic Neon Badges**: Distinct purple (📍 Nearby), blue (⚔️ Rival), gold (👑 Pro), and green (🌱 Rising) badges.
+
+### 🎮 Gameplay & Quality of Life Fixes
+- **Game Over Navigation**: Added dedicated "MAIN MENU" button in game-over overlay and restored menu navigation upon game over.
+- **Screen Wake Lock Guard**: Safely handled `activateKeepAwakeAsync` and added `android.permission.WAKE_LOCK` to eliminate random screen lock crashes.
+- **Firestore Query Fix**: Switched to single-field indexing with in-memory tie-breakers to resolve the composite index bug.
+
 ## [1.1.0] - 2026-01-04
 
 ### Visual Enhancements

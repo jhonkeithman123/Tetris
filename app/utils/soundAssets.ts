@@ -73,3 +73,7 @@ export const musics: Record<Musics, any> = {
   sound_track: require(`${soundPath}/${music}/sound_track${ext}`),
   game_sound: require(`${soundPath}/${music}/game_sound${ext}`),
 };
+
+export default function RouteFallback() {
+  return null;
+}

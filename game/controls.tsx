@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 interface ControlsProps {
@@ -13,7 +13,13 @@ interface ControlsProps {
   gameOver: boolean;
 }
 
-export default function Controls({
+// Low-latency DAS and ARR constants (in ms)
+const DAS_LEFT_RIGHT = 150; // Initial delay before continuous move (modern standard)
+const ARR_LEFT_RIGHT = 45;  // Auto-repeat rate interval for fluid sliding
+const DAS_DOWN = 80;        // Soft drop starts almost immediately
+const ARR_DOWN = 35;        // Soft drop repeat speed
+
+function ControlsComponent({
   onRotate,
   onMoveLeft,
   onMoveDown,
@@ -24,25 +30,13 @@ export default function Controls({
   isPaused,
   gameOver,
 }: ControlsProps) {
-  // Left Controls
-  const [leftPressed, setLeftPressed] = useState<boolean>(false);
-  const [rightPressed, setRightPressed] = useState<boolean>(false);
-  const [downPressed, setDownPressed] = useState<boolean>(false);
-
-  // Right Controls
-  const [hardDropPressed, setHardDropPressed] = useState<boolean>(false);
-  const [rotatePressed, setRotatePressed] = useState<boolean>(false);
-  const [holdPressed, setHoldPressed] = useState<boolean>(false);
-
   const leftIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rightIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const downIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const rotateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const leftTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const downTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rotateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const disabled = isPaused || gameOver;
 
@@ -50,23 +44,19 @@ export default function Controls({
     action: () => void,
     intervalRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>,
     timeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
-    delay: number = 100,
-    initialDelay: number = 300
+    delay: number,
+    initialDelay: number
   ) => {
     if (disabled) return;
 
-    // Execute immediately
+    // Execute immediately on 0ms press
     action();
 
-    // Clear any existing timeout/interval
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
+    // Clear any previous timer
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (intervalRef.current) clearInterval(intervalRef.current);
 
-    // Wait for initial delay before starting continuous movement
+    // Schedule DAS -> ARR
     timeoutRef.current = setTimeout(() => {
       intervalRef.current = setInterval(() => {
         action();
@@ -95,53 +85,51 @@ export default function Controls({
         {/* Top row: Left and Right */}
         <View style={styles.dpadTopRow}>
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.dpadButton,
-              leftPressed && styles.controlButtonPressed,
+              pressed && styles.controlButtonPressed,
               disabled && styles.controlButtonDisabled,
             ]}
             onPressIn={() => {
-              setLeftPressed(true);
               startContinuousMove(
                 onMoveLeft,
                 leftIntervalRef,
                 leftTimeoutRef,
-                100,
-                300
+                ARR_LEFT_RIGHT,
+                DAS_LEFT_RIGHT
               );
             }}
             onPressOut={() => {
-              setLeftPressed(false);
               stopContinuousMove(leftIntervalRef, leftTimeoutRef);
             }}
             disabled={disabled}
+            hitSlop={6}
           >
             <Text style={styles.controlButtonText}>←</Text>
           </Pressable>
 
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.dpadButton,
-              rightPressed && styles.controlButtonPressed,
+              pressed && styles.controlButtonPressed,
               disabled && styles.controlButtonDisabled,
             ]}
             onPressIn={() => {
-              setRightPressed(true);
               startContinuousMove(
                 onMoveRight,
                 rightIntervalRef,
                 rightTimeoutRef,
-                100,
-                300
+                ARR_LEFT_RIGHT,
+                DAS_LEFT_RIGHT
               );
             }}
             onPressOut={() => {
-              setRightPressed(false);
               stopContinuousMove(rightIntervalRef, rightTimeoutRef);
             }}
             disabled={disabled}
+            hitSlop={6}
           >
             <Text style={styles.controlButtonText}>→</Text>
           </Pressable>
@@ -150,27 +138,26 @@ export default function Controls({
         {/* Bottom row: Down (centered) */}
         <View style={styles.dpadBottomRow}>
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.dpadButton,
-              downPressed && styles.controlButtonPressed,
+              pressed && styles.controlButtonPressed,
               disabled && styles.controlButtonDisabled,
             ]}
             onPressIn={() => {
-              setDownPressed(true);
               startContinuousMove(
                 onMoveDown,
                 downIntervalRef,
                 downTimeoutRef,
-                50,
-                300
+                ARR_DOWN,
+                DAS_DOWN
               );
             }}
             onPressOut={() => {
-              setDownPressed(false);
               stopContinuousMove(downIntervalRef, downTimeoutRef);
             }}
             disabled={disabled}
+            hitSlop={6}
           >
             <Text style={styles.controlButtonText}>↓</Text>
           </Pressable>
@@ -182,69 +169,57 @@ export default function Controls({
         <View style={styles.actionTopRow}>
           {/* Hold Button - Left position */}
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.actionButton,
               styles.holdButton,
-              holdPressed && styles.controlButtonPressed,
+              pressed && styles.controlButtonPressed,
               (!canHold || disabled) && styles.controlButtonDisabled,
             ]}
             onPressIn={() => {
-              setHoldPressed(true);
-              onHold();
+              if (canHold && !disabled) onHold();
             }}
-            onPressOut={() => setHoldPressed(false)}
             disabled={!canHold || disabled}
+            hitSlop={6}
           >
             <Text style={styles.controlButtonText}>H</Text>
           </Pressable>
 
           {/* Hard Drop Button - Right position */}
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.dropButton,
               styles.actionButton,
               styles.hardDropButton,
-              hardDropPressed && styles.dropButtonPressed,
+              pressed && styles.dropButtonPressed,
               disabled && styles.controlButtonDisabled,
             ]}
             onPressIn={() => {
-              setHardDropPressed(true);
-              onHardDrop();
+              if (!disabled) onHardDrop();
             }}
-            onPressOut={() => setHardDropPressed(false)}
             disabled={disabled}
+            hitSlop={6}
           >
             <Text style={styles.controlButtonText}>⬇</Text>
           </Pressable>
         </View>
-        {/* Bottom row: Rotate Button (centered) */}
+
+        {/* Bottom row: Rotate Button (centered) - Instant response */}
         <View style={styles.actionBottomRow}>
-          {/* Rotate Button - Bottom position */}
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.actionButton,
               styles.rotateButton,
-              rotatePressed && styles.controlButtonPressed,
+              pressed && styles.controlButtonPressed,
               disabled && styles.controlButtonDisabled,
             ]}
             onPressIn={() => {
-              setRotatePressed(true);
-              startContinuousMove(
-                onRotate,
-                rotateIntervalRef,
-                rotateTimeoutRef,
-                150,
-                300
-              );
-            }}
-            onPressOut={() => {
-              setRotatePressed(false);
-              stopContinuousMove(rotateIntervalRef, rotateTimeoutRef);
+              if (!disabled) onRotate();
             }}
             disabled={disabled}
+            hitSlop={6}
           >
             <Text style={styles.controlButtonText}>↺</Text>
           </Pressable>
@@ -253,6 +228,8 @@ export default function Controls({
     </View>
   );
 }
+
+export default React.memo(ControlsComponent);
 
 const styles = StyleSheet.create({
   container: {
@@ -299,7 +276,6 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   dpadButton: {
-    // D-pad specific styles
     left: -15,
     margin: 10,
   },

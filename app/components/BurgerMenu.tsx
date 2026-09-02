@@ -20,7 +20,7 @@ import DialogBox from "./Dialog";
 export const GITHUB_OWNER = "jhonkeithman123";
 const GITHUB_REPO = "Tetris";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-export const CURRENT_VERSION = "1.1.0"; // TODO: UPDATE MANUALLY
+export const CURRENT_VERSION = "2.0.0"; // TODO: UPDATE MANUALLY
 
 interface GitHubRelease {
   tag_name: string;
@@ -39,11 +39,13 @@ const BurgerMenu = ({
   onExit,
   onHelp,
   onAccount,
+  onFriends,
   onPatchNotes,
 }: {
   onExit: () => void;
   onHelp: () => void;
   onAccount: () => void;
+  onFriends?: () => void;
   onPatchNotes: () => void;
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -334,6 +336,18 @@ const BurgerMenu = ({
         >
           <Text style={styles.menuItemText}>👤 Account</Text>
         </Pressable>
+
+        {onFriends && (
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsOpen(false);
+              onFriends();
+            }}
+          >
+            <Text style={styles.menuItemText}>👥 Friends</Text>
+          </Pressable>
+        )}
 
         <Pressable
           style={styles.menuItem}

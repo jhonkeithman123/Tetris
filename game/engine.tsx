@@ -412,6 +412,25 @@ export const mergePiece = (
   return newBoard;
 };
 
+export const findFullRows = (board: BoardCell[][]): number[] => {
+  const fullRows: number[] = [];
+  board.forEach((row, rowIndex) => {
+    if (row.every((cell) => cell.filled)) {
+      fullRows.push(rowIndex);
+    }
+  });
+  return fullRows;
+};
+
+export const getStackHeight = (board: BoardCell[][]): number => {
+  for (let y = 0; y < board.length; y++) {
+    if (board[y].some((cell) => cell.filled)) {
+      return board.length - y;
+    }
+  }
+  return 0;
+};
+
 export const clearLines = (
   board: BoardCell[][]
 ): { newBoard: BoardCell[][]; linesCleared: number } => {
