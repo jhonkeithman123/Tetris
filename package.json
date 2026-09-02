@@ -13,7 +13,8 @@
     "build_apk": "eas build -p android --profile prod",
     "build_ios": "eas build --platform ios",
     "build": "eas build",
-    "build_local": "eas build --platform android --local"
+    "build_local": "eas build --platform android --local",
+    "build_gradle": "cd android && gradlew assembleRelease"
   },
   "dependencies": {
     "@131fgh/ditroy-client": "^0.2.0",
@@ -59,6 +60,7 @@
   "devDependencies": {
     "@react-native-community/slider": "5.0.1",
     "@types/react": "~19.1.0",
+    "eas-cli": "^23.2.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
