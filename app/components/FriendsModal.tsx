@@ -1,4 +1,5 @@
 import authService from "@/app/services/authService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   FriendRequest,
   friendService,
@@ -50,11 +51,13 @@ export default function FriendsModal({
 
   // Search state
   const [searchCode, setSearchCode] = useState<string>("");
-  const [searchResult, setSearchResult] =
-    useState<UserFriendProfile | null>(null);
+  const [searchResults, setSearchResults] = useState<UserFriendProfile[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [requestSent, setRequestSent] = useState<boolean>(false);
+  const [searchSentMap, setSearchSentMap] = useState<{ [uid: string]: boolean }>({});
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [friendSearchHistory, setFriendSearchHistory] = useState<string[]>([]);
+
+  const FRIEND_HISTORY_KEY = "@tetris_friend_search_history";
 
   useEffect(() => {
     const unsub = authService.subscribeToAuthState((user) => {
@@ -98,37 +101,79 @@ export default function FriendsModal({
     }
   };
 
-  const handleSearch = async () => {
-    setSearchError(null);
-    setSearchResult(null);
-    setRequestSent(false);
+  useEffect(() => {
+    const loadFriendHistory = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(FRIEND_HISTORY_KEY);
+        if (stored) {
+          setFriendSearchHistory(JSON.parse(stored));
+        }
+      } catch (e) {}
+    };
+    loadFriendHistory();
+  }, []);
 
-    if (!searchCode.trim()) {
-      setSearchError("Please enter a friend code (e.g. TR-A9B42C).");
+  const saveFriendHistoryItem = async (term: string) => {
+    const clean = term.trim();
+    if (!clean) return;
+    const updated = [
+      clean,
+      ...friendSearchHistory.filter((h) => h.toLowerCase() !== clean.toLowerCase()),
+    ].slice(0, 6);
+    setFriendSearchHistory(updated);
+    try {
+      await AsyncStorage.setItem(FRIEND_HISTORY_KEY, JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const clearFriendHistory = async () => {
+    setFriendSearchHistory([]);
+    try {
+      await AsyncStorage.removeItem(FRIEND_HISTORY_KEY);
+    } catch (e) {}
+  };
+
+  const handleSearchWithTerm = async (overrideTerm?: string) => {
+    setSearchError(null);
+    setSearchResults([]);
+
+    const term = (overrideTerm ?? searchCode).trim();
+    if (!term) {
+      setSearchError("Please enter a username, email, or friend code.");
       return;
     }
 
+    if (overrideTerm) {
+      setSearchCode(overrideTerm);
+    }
+
+    await saveFriendHistoryItem(term);
+
     setLoading(true);
-    const result = await friendService.searchByFriendCode(searchCode);
+    const results = await friendService.searchPlayers(term);
     setLoading(false);
 
-    if (!result) {
-      setSearchError("No player found with this friend code.");
-    } else if (result.uid === currentUser?.uid) {
-      setSearchError("That's your own friend code!");
+    // Filter out current logged in user
+    const filtered = results.filter((p) => p.uid !== currentUser?.uid);
+
+    if (filtered.length === 0) {
+      setSearchError("No players found matching this search.");
     } else {
-      setSearchResult(result);
+      setSearchResults(filtered);
     }
   };
 
-  const handleSendRequest = async () => {
-    if (!searchResult) return;
+  const handleSearch = async () => {
+    await handleSearchWithTerm();
+  };
+
+  const handleSendRequestToPlayer = async (target: UserFriendProfile) => {
     setLoading(true);
-    const success = await friendService.sendFriendRequest(searchResult);
+    const success = await friendService.sendFriendRequest(target);
     setLoading(false);
 
     if (success) {
-      setRequestSent(true);
+      setSearchSentMap((prev) => ({ ...prev, [target.uid]: true }));
     } else {
       setSearchError("Failed to send request. Check your connection.");
     }
@@ -326,20 +371,81 @@ export default function FriendsModal({
 
                   {/* Search Input */}
                   <View style={styles.searchSection}>
-                    <Text style={styles.searchLabel}>SEARCH BY FRIEND CODE</Text>
+                    <Text style={styles.searchLabel}>
+                      SEARCH BY CODE, USERNAME, OR EMAIL
+                    </Text>
                     <View style={styles.searchRow}>
                       <TextInput
                         style={styles.searchInput}
-                        placeholder="e.g. TR-84B91F"
+                        placeholder="Username, email, or TR-code..."
                         placeholderTextColor="#666"
                         value={searchCode}
                         onChangeText={setSearchCode}
-                        autoCapitalize="characters"
+                        autoCapitalize="none"
+                        autoCorrect={false}
                       />
                       <Pressable style={styles.searchBtn} onPress={handleSearch}>
                         <Text style={styles.searchBtnText}>SEARCH</Text>
                       </Pressable>
                     </View>
+
+                    {friendSearchHistory.length > 0 && (
+                      <View style={{ marginTop: 8 }}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              color: "#888",
+                              fontWeight: "700",
+                            }}
+                          >
+                            RECENT SEARCHES
+                          </Text>
+                          <Pressable onPress={clearFriendHistory}>
+                            <Text
+                              style={{
+                                fontSize: 9,
+                                color: "#e74c3c",
+                                fontWeight: "700",
+                              }}
+                            >
+                              Clear
+                            </Text>
+                          </Pressable>
+                        </View>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={{ gap: 6 }}
+                        >
+                          {friendSearchHistory.map((term, idx) => (
+                            <Pressable
+                              key={idx}
+                              style={{
+                                backgroundColor: "#1e1e38",
+                                borderRadius: 12,
+                                paddingHorizontal: 8,
+                                paddingVertical: 3,
+                                borderWidth: 1,
+                                borderColor: "#333366",
+                              }}
+                              onPress={() => handleSearchWithTerm(term)}
+                            >
+                              <Text style={{ color: "#00ffff", fontSize: 10 }}>
+                                🕒 {term}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
 
                     {searchError && (
                       <View style={styles.errorBox}>
@@ -347,31 +453,43 @@ export default function FriendsModal({
                       </View>
                     )}
 
-                    {searchResult && (
-                      <View style={styles.resultCard}>
-                        <View style={styles.resultInfo}>
-                          <Text style={styles.resultName}>
-                            {searchResult.displayName}
-                          </Text>
-                          <Text style={styles.resultCode}>
-                            {searchResult.friendCode}
-                          </Text>
-                        </View>
+                    {searchResults.length > 0 && (
+                      <View style={{ marginTop: 10, gap: 8 }}>
+                        {searchResults.map((player) => {
+                          const isSent = searchSentMap[player.uid];
+                          return (
+                            <View key={player.uid} style={styles.resultCard}>
+                              <View style={styles.resultInfo}>
+                                <Text style={styles.resultName}>
+                                  {player.displayName}
+                                </Text>
+                                <Text style={styles.resultCode}>
+                                  {player.friendCode}
+                                  {player.highScore
+                                    ? ` • High Score: ${player.highScore.toLocaleString()}`
+                                    : ""}
+                                </Text>
+                              </View>
 
-                        {requestSent ? (
-                          <View style={styles.sentBadge}>
-                            <Text style={styles.sentBadgeText}>REQUEST SENT ✓</Text>
-                          </View>
-                        ) : (
-                          <Pressable
-                            style={styles.sendRequestBtn}
-                            onPress={handleSendRequest}
-                          >
-                            <Text style={styles.sendRequestBtnText}>
-                              SEND REQUEST
-                            </Text>
-                          </Pressable>
-                        )}
+                              {isSent ? (
+                                <View style={styles.sentBadgeSmall}>
+                                  <Text style={styles.sentBadgeSmallText}>
+                                    SENT ✓
+                                  </Text>
+                                </View>
+                              ) : (
+                                <Pressable
+                                  style={styles.addRecBtn}
+                                  onPress={() =>
+                                    handleSendRequestToPlayer(player)
+                                  }
+                                >
+                                  <Text style={styles.addRecBtnText}>+ ADD</Text>
+                                </Pressable>
+                              )}
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </View>

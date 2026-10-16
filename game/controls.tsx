@@ -9,6 +9,8 @@ interface ControlsProps {
   onHardDrop: () => void;
   onHold: () => void;
   canHold: boolean;
+  onDump: () => void;
+  canDump: boolean;
   isPaused: boolean;
   gameOver: boolean;
 }
@@ -27,6 +29,8 @@ function ControlsComponent({
   onHardDrop,
   onHold,
   canHold,
+  onDump,
+  canDump,
   isPaused,
   gameOver,
 }: ControlsProps) {
@@ -205,8 +209,28 @@ function ControlsComponent({
           </Pressable>
         </View>
 
-        {/* Bottom row: Rotate Button (centered) - Instant response */}
+        {/* Bottom row: Dump Button & Rotate Button */}
         <View style={styles.actionBottomRow}>
+          {/* Dump (Trash) Button */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.controlButton,
+              styles.actionButton,
+              styles.dumpButton,
+              pressed && styles.controlButtonPressed,
+              (!canDump || disabled) && styles.controlButtonDisabled,
+            ]}
+            onPressIn={() => {
+              if (canDump && !disabled) onDump();
+            }}
+            disabled={!canDump || disabled}
+            hitSlop={6}
+          >
+            <Text style={styles.dumpButtonIcon}>🗑️</Text>
+            <Text style={styles.dumpButtonText}>DUMP</Text>
+          </Pressable>
+
+          {/* Rotate Button */}
           <Pressable
             style={({ pressed }) => [
               styles.controlButton,
@@ -316,6 +340,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 12,
   },
   actionButton: {
     right: -15,
@@ -324,6 +349,20 @@ const styles = StyleSheet.create({
   holdButton: {
     backgroundColor: "#9b59b6",
     borderColor: "#8e44ad",
+  },
+  dumpButton: {
+    backgroundColor: "#d35400",
+    borderColor: "#e67e22",
+  },
+  dumpButtonIcon: {
+    fontSize: 20,
+  },
+  dumpButtonText: {
+    fontSize: 9,
+    color: "#ffffff",
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+    marginTop: 2,
   },
   rotateButton: {},
   hardDropButton: {},

@@ -2,7 +2,12 @@ import AuthModal from "@/app/components/AuthModal";
 import BurgerMenu from "@/app/components/BurgerMenu";
 import DialogBox from "@/app/components/Dialog";
 import FriendsModal from "@/app/components/FriendsModal";
+import JukeboxModal from "@/app/components/JukeboxModal";
 import authService from "@/app/services/authService";
+import {
+  casualMusicService,
+  JukeboxState,
+} from "@/app/services/casualMusicService";
 import {
   BlockColor,
   getBlockAsset,
@@ -180,9 +185,19 @@ export default function Menu({
   const [friendsModalVisible, setFriendsModalVisible] = useState<boolean>(false);
   const [accountDialogVisible, setAccountDialogVisible] =
     useState<boolean>(false);
+  const [jukeboxModalVisible, setJukeboxModalVisible] =
+    useState<boolean>(false);
+  const [jukeboxState, setJukeboxState] = useState<JukeboxState>(
+    casualMusicService.getState()
+  );
   const [currentUser, setCurrentUser] = useState<User | null>(
     authService.getCurrentUser()
   );
+
+  useEffect(() => {
+    const unsub = casualMusicService.subscribe(setJukeboxState);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = authService.subscribeToAuthState((user) => {
@@ -261,12 +276,29 @@ export default function Menu({
         </Text>
       </Pressable>
 
+      {/* Top Right Music Selector Pill */}
+      <Pressable
+        style={styles.musicPill}
+        onPress={() => setJukeboxModalVisible(true)}
+      >
+        <Text style={styles.musicPillIcon}>🎵</Text>
+        <Text style={styles.musicPillText} numberOfLines={1}>
+          {jukeboxState.activeTrackTitle}
+        </Text>
+      </Pressable>
+
       <BurgerMenu
         onExit={() => setQuitDialogVisible(true)}
         onHelp={handleHelp}
         onAccount={handleAccount}
         onFriends={() => setFriendsModalVisible(true)}
+        onMusic={() => setJukeboxModalVisible(true)}
         onPatchNotes={handlePatchNotes}
+      />
+
+      <JukeboxModal
+        visible={jukeboxModalVisible}
+        onClose={() => setJukeboxModalVisible(false)}
       />
 
       <AuthModal
@@ -483,5 +515,30 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#f39c12",
     marginRight: 6,
+  },
+  musicPill: {
+    position: "absolute",
+    top: 68,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(20, 20, 36, 0.85)",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#00ffff",
+    zIndex: 10,
+    elevation: 6,
+  },
+  musicPillIcon: {
+    fontSize: 12,
+    marginRight: 6,
+  },
+  musicPillText: {
+    color: "#00ffff",
+    fontSize: 11,
+    fontWeight: "bold",
+    maxWidth: 130,
   },
 });

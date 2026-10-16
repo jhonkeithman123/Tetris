@@ -40,12 +40,14 @@ const BurgerMenu = ({
   onHelp,
   onAccount,
   onFriends,
+  onMusic,
   onPatchNotes,
 }: {
   onExit: () => void;
   onHelp: () => void;
   onAccount: () => void;
   onFriends?: () => void;
+  onMusic?: () => void;
   onPatchNotes: () => void;
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -346,6 +348,18 @@ const BurgerMenu = ({
             }}
           >
             <Text style={styles.menuItemText}>👥 Friends</Text>
+          </Pressable>
+        )}
+
+        {onMusic && (
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsOpen(false);
+              onMusic();
+            }}
+          >
+            <Text style={styles.menuItemText}>📻 Choose Music</Text>
           </Pressable>
         )}
 

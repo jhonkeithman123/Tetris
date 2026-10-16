@@ -9,16 +9,18 @@ import {
 import { Audio } from "expo-av";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  casualMusicService,
+  LOCAL_TRACKS,
+} from "@/app/services/casualMusicService";
+
 export default function useSound() {
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [sfxEnabled, setSfxEnabled] = useState(true);
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [sfxVolume, setSfxVolume] = useState(0.7);
 
-  const musicPlayerRef = useRef<Audio.Sound | null>(null);
-  const currentMusicRef = useRef<Musics | null>(null);
   const isInitializedRef = useRef(false);
-  const isMusicLoadingRef = useRef(false);
   const soundEffectsPoolRef = useRef<Map<string, Audio.Sound>>(new Map());
 
   useEffect(() => {
@@ -34,95 +36,27 @@ export default function useSound() {
         }
       });
       soundEffectsPoolRef.current.clear();
-
-      // Cleanup music
-      if (musicPlayerRef.current) {
-        try {
-          musicPlayerRef.current.unloadAsync();
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      }
     };
   }, []);
 
-  const playMusic = async (music: Musics, loop: boolean = true) => {
-    if (!isInitializedRef.current || isMusicLoadingRef.current) return;
-
-    // Don't restart the same music if already playing
-    if (currentMusicRef.current === music && musicPlayerRef.current) {
-      try {
-        const status = await musicPlayerRef.current.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
-          return;
-        }
-      } catch (error) {
-        console.log("Music player error, reloading");
-      }
-    }
-
-    try {
-      isMusicLoadingRef.current = true;
-
-      // Unload previous music
-      if (musicPlayerRef.current) {
-        await musicPlayerRef.current.unloadAsync();
-        musicPlayerRef.current = null;
-      }
-
-      // Load and play new music
-      const { sound } = await Audio.Sound.createAsync(musics[music], {
-        shouldPlay: true,
-        isLooping: loop,
-        volume: musicEnabled ? musicVolume : 0,
-      });
-
-      musicPlayerRef.current = sound;
-      currentMusicRef.current = music;
-      isMusicLoadingRef.current = false;
-    } catch (error) {
-      console.error("Error playing music:", error);
-      currentMusicRef.current = null;
-      isMusicLoadingRef.current = false;
+  const playMusic = async (music: Musics) => {
+    if (!musicEnabled) return;
+    const station = LOCAL_TRACKS.find((s) => s.localKey === music);
+    if (station) {
+      await casualMusicService.playNow(station);
     }
   };
 
   const stopMusic = async () => {
-    if (musicPlayerRef.current) {
-      try {
-        await musicPlayerRef.current.stopAsync();
-        await musicPlayerRef.current.setPositionAsync(0);
-      } catch (error) {
-        // Ignore errors during cleanup
-      }
-      currentMusicRef.current = null;
-    }
+    await casualMusicService.stop();
   };
 
   const pauseMusic = async () => {
-    if (musicPlayerRef.current) {
-      try {
-        const status = await musicPlayerRef.current.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
-          await musicPlayerRef.current.pauseAsync();
-        }
-      } catch (error) {
-        console.error("Error pausing music:", error);
-      }
-    }
+    await casualMusicService.togglePlay();
   };
 
   const resumeMusic = async () => {
-    if (musicPlayerRef.current) {
-      try {
-        const status = await musicPlayerRef.current.getStatusAsync();
-        if (status.isLoaded && !status.isPlaying) {
-          await musicPlayerRef.current.playAsync();
-        }
-      } catch (error) {
-        console.error("Error resuming music:", error);
-      }
-    }
+    await casualMusicService.togglePlay();
   };
 
   const playEffect = async (effect: SoundEffects) => {
@@ -193,25 +127,14 @@ export default function useSound() {
 
   const setMusicVolumeLevel = async (volume: number) => {
     setMusicVolume(volume);
-    if (musicPlayerRef.current) {
-      try {
-        await musicPlayerRef.current.setVolumeAsync(
-          musicEnabled && volume > 0 ? volume : 0
-        );
-      } catch (error) {
-        console.error("Error setting music volume:", error);
-      }
-    }
+    await casualMusicService.setVolume(musicEnabled && volume > 0 ? volume : 0);
   };
 
   const toggleMusicEnabled = async (enabled: boolean) => {
     setMusicEnabled(enabled);
-    if (musicPlayerRef.current) {
-      try {
-        await musicPlayerRef.current.setVolumeAsync(enabled ? musicVolume : 0);
-      } catch (error) {
-        console.error("Error toggling music:", error);
-      }
+    await casualMusicService.setVolume(enabled ? musicVolume : 0);
+    if (!enabled) {
+      await casualMusicService.stop();
     }
   };
 

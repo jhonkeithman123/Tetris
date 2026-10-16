@@ -6,6 +6,7 @@ import ditroyService, {
 import useSound from "@/app/hooks/useSound";
 import storeManager from "@/app/utils/storeManager";
 import leaderboardService from "@/app/services/leaderboardService";
+import { casualMusicService } from "@/app/services/casualMusicService";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -104,6 +105,7 @@ export default function TetrisGame({
   const [nextNextPiece, setNextNextPiece] = useState<Piece | null>(null); // Second next piece
   const [heldPiece, setHeldPiece] = useState<Piece | null>(null);
   const [canHold, setCanHold] = useState<boolean>(true);
+  const [canDump, setCanDump] = useState<boolean>(true);
   const [rotation, setRotation] = useState<number>(0);
 
   const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -116,6 +118,7 @@ export default function TetrisGame({
   const gameOverRef = useRef<boolean>(false);
   const rotationRef = useRef<number>(0);
   const canHoldRef = useRef<boolean>(true);
+  const canDumpRef = useRef<boolean>(true);
   const heldPieceRef = useRef<Piece | null>(null);
   const nextPieceRef = useRef<Piece | null>(null);
   const nextNextPieceRef = useRef<Piece | null>(null);
@@ -233,6 +236,10 @@ export default function TetrisGame({
   useEffect(() => {
     canHoldRef.current = canHold;
   }, [canHold]);
+
+  useEffect(() => {
+    canDumpRef.current = canDump;
+  }, [canDump]);
 
   useEffect(() => {
     heldPieceRef.current = heldPiece;
@@ -361,13 +368,35 @@ export default function TetrisGame({
     }
   };
 
-  // Spawn new piece
+  // Spawn new piece from the synchronized piece queue
   const spawnNewPiece = () => {
-    const piece = nextPiece || createPiece();
-    const currentBoard = boardRef.current;
+    // Read directly from refs to guarantee 100% queue integrity across all closures
+    const piece = nextPieceRef.current || createPiece();
+    const newNext = nextNextPieceRef.current || createPiece();
+    const newNextNext = createPiece();
 
+    // Advance queue refs synchronously
+    currentPieceRef.current = piece;
+    nextPieceRef.current = newNext;
+    nextNextPieceRef.current = newNextNext;
+
+    // Update React state for UI rendering
+    setCurrentPiece(piece);
+    setNextPiece(newNext);
+    setNextNextPiece(newNextNext);
+    setRotation(0);
+    rotationRef.current = 0;
+    setCanHold(true);
+    canHoldRef.current = true;
+    // Reset canDump: player can dump once for this new shape
+    setCanDump(true);
+    canDumpRef.current = true;
+    lastDropTimeRef.current = Date.now();
+
+    const currentBoard = boardRef.current;
     if (checkCollision(piece, currentBoard)) {
       setGameOver(true);
+      gameOverRef.current = true;
       checkAndUpdateHighScore();
       if (gameLoopRef.current) {
         clearInterval(gameLoopRef.current);
@@ -381,13 +410,6 @@ export default function TetrisGame({
       }
       return;
     }
-
-    setCurrentPiece(piece);
-    setNextPiece(nextNextPiece || createPiece());
-    setNextNextPiece(createPiece());
-    setRotation(0);
-    setCanHold(true);
-    lastDropTimeRef.current = Date.now();
   };
 
   const startGame = () => {
@@ -398,10 +420,16 @@ export default function TetrisGame({
     setCombo(0);
     setTime(0);
     setGameOver(false);
+    gameOverRef.current = false;
     setIsPaused(false);
+    isPausedRef.current = false;
     setGameStarted(true);
     setHeldPiece(null);
+    heldPieceRef.current = null;
     setCanHold(true);
+    canHoldRef.current = true;
+    setCanDump(true);
+    canDumpRef.current = true;
     setIsNewHighScore(false);
     setClearingRows([]);
     isLineClearingRef.current = false;
@@ -415,10 +443,15 @@ export default function TetrisGame({
     const second = createPiece();
     const third = createPiece();
 
+    currentPieceRef.current = firstPiece;
+    nextPieceRef.current = second;
+    nextNextPieceRef.current = third;
+
     setCurrentPiece(firstPiece);
     setNextPiece(second);
     setNextNextPiece(third);
     setRotation(0);
+    rotationRef.current = 0;
     lastDropTimeRef.current = Date.now();
   };
 
@@ -457,6 +490,12 @@ export default function TetrisGame({
   // Play game music when game starts
   useEffect(() => {
     if (gameStarted && !gameOver && !isPaused) {
+      const casual = casualMusicService.getState();
+      if (casual.retainInGame && casual.isPlaying) {
+        // Retain Jukebox music during gameplay without interruption
+        return;
+      }
+      // If retainInGame is disabled or nothing is playing, play classic arcade sound
       const timer = setTimeout(() => {
         soundHook.playMusic("game_sound");
       }, 300);
@@ -468,13 +507,20 @@ export default function TetrisGame({
   useEffect(() => {
     if (gameOver) {
       soundHook.stopMusic();
+      casualMusicService.stop();
       soundHook.playEffect("game_over");
     }
   }, [gameOver]);
 
-  // Start Game
+  // Start Game & cleanup on unmount
   useEffect(() => {
     startGame();
+    return () => {
+      const casual = casualMusicService.getState();
+      if (!casual.retainInGame) {
+        casualMusicService.stop();
+      }
+    };
   }, []);
 
   // Back to menu / Pause combined handlers
@@ -492,7 +538,10 @@ export default function TetrisGame({
   const handleResume = () => {
     setIsPaused(false);
     isPausedRef.current = false;
-    soundHook.resumeMusic();
+    const casual = casualMusicService.getState();
+    if (casual.currentStationId === "stock" || !casual.isPlaying) {
+      soundHook.resumeMusic();
+    }
     setPauseMenuVisible(false);
   };
 
@@ -514,6 +563,7 @@ export default function TetrisGame({
       clearTimeout(comboTimerRef.current);
     }
     soundHook.stopMusic();
+    casualMusicService.stop();
     onBackToMenu();
   };
 
@@ -569,27 +619,89 @@ export default function TetrisGame({
       };
 
       setHeldPiece(temp);
+      heldPieceRef.current = temp;
       setCurrentPiece(swapped);
       currentPieceRef.current = swapped;
       setRotation(0);
       rotationRef.current = 0;
     } else {
-      setHeldPiece({
+      const stored = {
         ...piece,
         x: Math.floor(BOARD_WIDTH / 2) - 1,
         y: 0,
-      });
+      };
+      setHeldPiece(stored);
+      heldPieceRef.current = stored;
+
       const nextP = nextPieceRef.current || createPiece();
-      setCurrentPiece(nextP);
+      const newNext = nextNextPieceRef.current || createPiece();
+      const newNextNext = createPiece();
+
       currentPieceRef.current = nextP;
-      setNextPiece(nextNextPieceRef.current || createPiece());
-      setNextNextPiece(createPiece());
+      nextPieceRef.current = newNext;
+      nextNextPieceRef.current = newNextNext;
+
+      setCurrentPiece(nextP);
+      setNextPiece(newNext);
+      setNextNextPiece(newNextNext);
       setRotation(0);
       rotationRef.current = 0;
     }
 
     setCanHold(false);
     canHoldRef.current = false;
+  }, [soundHook]);
+
+  // Dump (trash) piece handler - discards current piece, advances queue, locks once per piece placement, disables hold
+  const handleDump = useCallback(() => {
+    if (
+      !currentPieceRef.current ||
+      !canDumpRef.current ||
+      isPausedRef.current ||
+      gameOverRef.current ||
+      isDropAnimatingRef.current ||
+      isLineClearingRef.current
+    ) {
+      return;
+    }
+
+    soundHook.playEffect("disappear");
+
+    const nextP = nextPieceRef.current || createPiece();
+    const newNext = nextNextPieceRef.current || createPiece();
+    const newNextNext = createPiece();
+
+    currentPieceRef.current = nextP;
+    nextPieceRef.current = newNext;
+    nextNextPieceRef.current = newNextNext;
+
+    setCurrentPiece(nextP);
+    setNextPiece(newNext);
+    setNextNextPiece(newNextNext);
+    setRotation(0);
+    rotationRef.current = 0;
+    lastDropTimeRef.current = Date.now();
+
+    // Rule: Cannot dump again until a shape is placed
+    setCanDump(false);
+    canDumpRef.current = false;
+
+    // Rule: Cannot hold if you use trash button
+    setCanHold(false);
+    canHoldRef.current = false;
+
+    // Check collision on spawn
+    if (checkCollision(nextP, boardRef.current)) {
+      setGameOver(true);
+      gameOverRef.current = true;
+      checkAndUpdateHighScore();
+      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (comboTimerRef.current) {
+        clearTimeout(comboTimerRef.current);
+        comboTimerRef.current = null;
+      }
+    }
   }, [soundHook]);
 
   // Control handlers (memoized with stable identities to prevent re-renders)
@@ -1065,6 +1177,8 @@ export default function TetrisGame({
           onHardDrop={handleHardDrop}
           onHold={handleHold}
           canHold={canHold}
+          onDump={handleDump}
+          canDump={canDump}
           isPaused={isPaused}
           gameOver={gameOver}
         />

@@ -5,6 +5,8 @@ import PatchNotes from "@/app/PatchNotes";
 import Settings from "@/app/Settings";
 import Menu from "@/game/menu";
 import TetrisGame from "@/game/TetrisGame";
+import { casualMusicService } from "@/app/services/casualMusicService";
+import BackgroundYouTubePlayer from "@/app/components/BackgroundYouTubePlayer";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import React, { useEffect, useRef, useState } from "react";
 import { StatusBar, StyleSheet } from "react-native";
@@ -20,18 +22,26 @@ export default function HomeScreen() {
   const keepAwakeActiveRef = useRef(false);
 
   useEffect(() => {
-    // Play menu music on initial mount
+    const checkAndPlayMenuMusic = async () => {
+      const state = casualMusicService.getState();
+      if (!state.isPlaying) {
+        await casualMusicService.initializeStartupMusic();
+      }
+    };
+
     if (isInitialMount.current) {
-      const timer = setTimeout(() => {
-        soundHook.playMusic("sound_track");
-      }, 500);
+      const timer = setTimeout(checkAndPlayMenuMusic, 400);
       isInitialMount.current = false;
       return () => clearTimeout(timer);
     }
 
-    // Handle screen transitions
     if (currentScreen === "menu" && previousScreenRef.current !== "menu") {
-      soundHook.playMusic("sound_track");
+      checkAndPlayMenuMusic();
+    } else if (currentScreen !== "menu") {
+      const state = casualMusicService.getState();
+      if (!state.retainInGame) {
+        soundHook.stopMusic();
+      }
     }
 
     previousScreenRef.current = currentScreen;
@@ -129,6 +139,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaProvider>
+      <BackgroundYouTubePlayer />
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#0b0b0b" />
 

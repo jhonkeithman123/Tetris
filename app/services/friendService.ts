@@ -25,6 +25,8 @@ export interface UserFriendProfile {
   friendCode: string;
   displayName: string;
   photoURL?: string | null;
+  email?: string | null;
+  searchName?: string | null;
   highScore?: number;
   lines?: number;
   level?: number;
@@ -85,7 +87,13 @@ class FriendService {
       const data = snap.data() as UserFriendProfile;
       // Ensure friendCode is set
       if (!data.friendCode) {
-        await updateDoc(userDocRef, { friendCode });
+        await updateDoc(userDocRef, {
+          friendCode,
+          email: auth.currentUser?.email
+            ? auth.currentUser.email.toLowerCase()
+            : null,
+          searchName: (data.displayName || name).toLowerCase(),
+        });
         return { ...data, friendCode };
       }
       return data;
@@ -96,6 +104,10 @@ class FriendService {
       friendCode,
       displayName: name,
       photoURL: auth.currentUser?.photoURL || null,
+      email: auth.currentUser?.email
+        ? auth.currentUser.email.toLowerCase()
+        : null,
+      searchName: name.toLowerCase(),
       updatedAt: serverTimestamp(),
     };
 
@@ -104,25 +116,137 @@ class FriendService {
   }
 
   /**
-   * Search for a player by their exact Friend Code (e.g. "TR-A9B42C")
+   * Search for players by Friend Code (exact), Email (exact), or Username (prefix/substring)
+   */
+  async searchPlayers(searchTerm: string): Promise<UserFriendProfile[]> {
+    const raw = searchTerm.trim();
+    if (!raw) return [];
+
+    const currentUid = auth.currentUser?.uid;
+    const lower = raw.toLowerCase();
+    const upper = raw.toUpperCase();
+    const resultsMap = new Map<string, UserFriendProfile>();
+
+    try {
+      // 1. If it looks like an email, query by email
+      if (lower.includes("@")) {
+        const emailQuery = query(
+          collection(db, this.usersCollection),
+          where("email", "==", lower),
+          limit(5)
+        );
+        const snap = await getDocs(emailQuery);
+        snap.forEach((d) => {
+          if (d.id !== currentUid) {
+            resultsMap.set(d.id, d.data() as UserFriendProfile);
+          }
+        });
+      }
+
+      // 2. Search by Friend Code (e.g. TR-XXXXXX or XXXXXX)
+      const codeToSearch = upper.startsWith("TR-") ? upper : `TR-${upper}`;
+      const codeQuery = query(
+        collection(db, this.usersCollection),
+        where("friendCode", "in", [upper, codeToSearch]),
+        limit(5)
+      );
+      const codeSnap = await getDocs(codeQuery).catch(() => null);
+      if (codeSnap) {
+        codeSnap.forEach((d) => {
+          if (d.id !== currentUid) {
+            resultsMap.set(d.id, d.data() as UserFriendProfile);
+          }
+        });
+      }
+
+      // 3. Search by Username prefix in users collection
+      const nameQuery = query(
+        collection(db, this.usersCollection),
+        where("displayName", ">=", raw),
+        where("displayName", "<=", raw + "\uf8ff"),
+        limit(10)
+      );
+      const nameSnap = await getDocs(nameQuery).catch(() => null);
+      if (nameSnap) {
+        nameSnap.forEach((d) => {
+          if (d.id !== currentUid) {
+            resultsMap.set(d.id, d.data() as UserFriendProfile);
+          }
+        });
+      }
+
+      // 4. Also search leaderboard (to include seeded arcade rivals / test players)
+      const lbQuery = query(
+        collection(db, "leaderboard"),
+        where("displayName", ">=", raw),
+        where("displayName", "<=", raw + "\uf8ff"),
+        limit(10)
+      );
+      const lbSnap = await getDocs(lbQuery).catch(() => null);
+      if (lbSnap) {
+        lbSnap.forEach((d) => {
+          if (d.id !== currentUid && !resultsMap.has(d.id)) {
+            const data = d.data();
+            resultsMap.set(d.id, {
+              uid: d.id,
+              displayName: data.displayName || "Player",
+              friendCode: data.friendCode || this.formatFriendCode(d.id),
+              highScore: data.score || 0,
+              lines: data.lines || 0,
+              level: data.level || 1,
+              photoURL: null,
+              location: data.location || null,
+            });
+          }
+        });
+      }
+
+      // 5. Fallback in-memory case-insensitive match from leaderboard top pool
+      if (resultsMap.size === 0) {
+        const fallbackSnap = await getDocs(
+          query(collection(db, "leaderboard"), limit(50))
+        ).catch(() => null);
+        if (fallbackSnap) {
+          fallbackSnap.forEach((d) => {
+            if (d.id === currentUid) return;
+            const data = d.data();
+            const dName = (data.displayName || "").toLowerCase();
+            const dCode = (data.friendCode || "").toLowerCase();
+            const dEmail = (data.email || "").toLowerCase();
+
+            if (
+              dName.includes(lower) ||
+              dCode.includes(lower) ||
+              (dEmail && dEmail.includes(lower))
+            ) {
+              resultsMap.set(d.id, {
+                uid: d.id,
+                displayName: data.displayName || "Player",
+                friendCode: data.friendCode || this.formatFriendCode(d.id),
+                highScore: data.score || 0,
+                lines: data.lines || 0,
+                level: data.level || 1,
+                photoURL: null,
+                location: data.location || null,
+              });
+            }
+          });
+        }
+      }
+
+      return Array.from(resultsMap.values());
+    } catch (error) {
+      console.warn("[FriendService] Search failed:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Search for a player by their exact Friend Code (backwards-compatible wrapper)
    */
   async searchByFriendCode(code: string): Promise<UserFriendProfile | null> {
-    const formatted = code.trim().toUpperCase();
-    try {
-      const q = query(
-        collection(db, this.usersCollection),
-        where("friendCode", "==", formatted),
-        limit(1)
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return snapshot.docs[0].data() as UserFriendProfile;
-      }
-      return null;
-    } catch (error) {
-      console.warn("[FriendService] Search by code failed:", error);
-      return null;
-    }
+    const results = await this.searchPlayers(code);
+    return results.length > 0 ? results[0] : null;
   }
 
   /**
